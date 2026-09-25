@@ -1,0 +1,35 @@
+# Dependencies
+node_modules
+/.pnp
+.pnp.js
+
+# Testing
+/coverage
+/test-results
+/playwright-report
+
+# Next.js
+/.next/
+/out/
+
+# Production
+/build
+dist
+
+# Environment variables
+.env
+.env*.local
+!.env.example
+
+# Database local data
+.postgres_data/
+
+# Debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# System Files
+.DS_Store
+Thumbs.db
+*.tsbuildinfo

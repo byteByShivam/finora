@@ -1,0 +1,322 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum AccountType {
+  bank
+  cash
+  credit_card
+  wallet
+  investment
+  other
+}
+
+enum TxnType {
+  income
+  expense
+  transfer
+}
+
+enum CategoryType {
+  income
+  expense
+}
+
+enum BudgetPeriod {
+  monthly
+  yearly
+}
+
+enum GoalStatus {
+  active
+  achieved
+  archived
+}
+
+enum NotifType {
+  budget_alert
+  budget_exceeded
+  goal_milestone
+  goal_achieved
+  recurring_due
+  recurring_failed
+  security
+  system
+}
+
+enum RecurFrequency {
+  daily
+  weekly
+  biweekly
+  monthly
+  yearly
+}
+
+enum UserStatus {
+  active
+  suspended
+  deleted
+}
+
+model User {
+  id                String                 @id @default(uuid())
+  email             String                 @unique @db.Citext
+  passwordHash      String?                @map("password_hash")
+  name              String                 @db.VarChar(120)
+  avatarUrl         String?                @map("avatar_url")
+  currency          String                 @default("INR") @db.Char(3)
+  timezone          String                 @default("Asia/Kolkata") @db.VarChar(64)
+  locale            String                 @default("en-IN") @db.VarChar(10)
+  emailVerifiedAt   DateTime?              @map("email_verified_at")
+  twoFactorEnabled  Boolean                @default(false) @map("two_factor_enabled")
+  twoFactorSecret   String?                @map("two_factor_secret")
+  status            UserStatus             @default(active)
+  createdAt         DateTime               @default(now()) @map("created_at")
+  updatedAt         DateTime               @updatedAt @map("updated_at")
+
+  accounts          Account[]
+  categories        Category[]
+  transactions      Transaction[]
+  budgets           Budget[]
+  goals             FinancialGoal[]
+  recurring         RecurringTransaction[]
+  notifications     Notification[]
+  sessions          Session[]
+  oauthAccounts     OAuthAccount[]
+  auditLogs         AuditLog[]
+
+  @@map("users")
+}
+
+model Account {
+  id              String      @id @default(uuid())
+  userId          String      @map("user_id")
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name            String      @db.VarChar(100)
+  type            AccountType
+  currency        String      @db.Char(3)
+  openingBalance  Decimal     @default(0) @map("opening_balance") @db.Decimal(14, 2)
+  currentBalance  Decimal     @default(0) @map("current_balance") @db.Decimal(14, 2)
+  creditLimit     Decimal?    @map("credit_limit") @db.Decimal(14, 2)
+  color           String?     @db.VarChar(7)
+  icon            String?     @db.VarChar(40)
+  isArchived      Boolean     @default(false) @map("is_archived")
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+
+  transactions    Transaction[]          @relation("AccountTransactions")
+  transferInbound Transaction[]          @relation("TransferAccount")
+  recurring       RecurringTransaction[]
+  linkedGoals     FinancialGoal[]
+
+  @@unique([userId, name])
+  @@index([userId, isArchived])
+  @@map("accounts")
+}
+
+model Category {
+  id         String        @id @default(uuid())
+  userId     String?       @map("user_id")
+  user       User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name       String        @db.VarChar(60)
+  type       CategoryType
+  icon       String?       @db.VarChar(40)
+  color      String?       @db.VarChar(7)
+  parentId   String?       @map("parent_id")
+  parent     Category?     @relation("CategoryParent", fields: [parentId], references: [id], onDelete: SetNull)
+  children   Category[]    @relation("CategoryParent")
+  isSystem   Boolean       @default(false) @map("is_system")
+  createdAt  DateTime      @default(now()) @map("created_at")
+  updatedAt  DateTime      @updatedAt @map("updated_at")
+
+  transactions Transaction[]
+  budgets      Budget[]
+  recurring    RecurringTransaction[]
+
+  @@index([userId, type])
+  @@map("categories")
+}
+
+model Transaction {
+  id                     String                 @id @default(uuid())
+  userId                 String                 @map("user_id")
+  user                   User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accountId              String                 @map("account_id")
+  account                Account                @relation("AccountTransactions", fields: [accountId], references: [id], onDelete: Restrict)
+  transferAccountId      String?                @map("transfer_account_id")
+  transferAccount        Account?               @relation("TransferAccount", fields: [transferAccountId], references: [id], onDelete: Restrict)
+  categoryId             String?                @map("category_id")
+  category               Category?              @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  type                   TxnType
+  amount                 Decimal                @db.Decimal(14, 2)
+  currency               String                 @db.Char(3)
+  description            String?                @db.VarChar(255)
+  notes                  String?                @db.Text
+  occurredAt             DateTime               @map("occurred_at")
+  recurringTransactionId String?                @map("recurring_transaction_id")
+  recurringTransaction   RecurringTransaction?  @relation(fields: [recurringTransactionId], references: [id], onDelete: SetNull)
+  isReconciled           Boolean                @default(false) @map("is_reconciled")
+  createdAt              DateTime               @default(now()) @map("created_at")
+  updatedAt              DateTime               @updatedAt @map("updated_at")
+
+  goalContribution       GoalContribution?
+
+  @@index([userId, occurredAt(sort: Desc)])
+  @@index([userId, categoryId, occurredAt])
+  @@index([accountId, occurredAt])
+  @@map("transactions")
+}
+
+model Budget {
+  id                String       @id @default(uuid())
+  userId            String       @map("user_id")
+  user              User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  categoryId        String       @map("category_id")
+  category          Category     @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  amount            Decimal      @db.Decimal(14, 2)
+  period            BudgetPeriod @default(monthly)
+  periodStart       DateTime     @map("period_start") @db.Date
+  rolloverEnabled   Boolean      @default(false) @map("rollover_enabled")
+  alertThresholdPct Int          @default(80) @map("alert_threshold_pct")
+  createdAt         DateTime     @default(now()) @map("created_at")
+  updatedAt         DateTime     @updatedAt @map("updated_at")
+
+  @@unique([userId, categoryId, period, periodStart])
+  @@index([userId, periodStart])
+  @@map("budgets")
+}
+
+model FinancialGoal {
+  id            String             @id @default(uuid())
+  userId        String             @map("user_id")
+  user          User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name          String             @db.VarChar(120)
+  targetAmount  Decimal            @map("target_amount") @db.Decimal(14, 2)
+  currentAmount Decimal            @default(0) @map("current_amount") @db.Decimal(14, 2)
+  targetDate    DateTime?          @map("target_date") @db.Date
+  accountId     String?            @map("account_id")
+  account       Account?           @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  icon          String?            @db.VarChar(40)
+  color         String?            @db.VarChar(7)
+  status        GoalStatus         @default(active)
+  createdAt     DateTime           @default(now()) @map("created_at")
+  updatedAt     DateTime           @updatedAt @map("updated_at")
+
+  contributions GoalContribution[]
+
+  @@index([userId, status])
+  @@map("financial_goals")
+}
+
+model GoalContribution {
+  id            String        @id @default(uuid())
+  goalId        String        @map("goal_id")
+  goal          FinancialGoal @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  transactionId String        @unique @map("transaction_id")
+  transaction   Transaction   @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  amount        Decimal       @db.Decimal(14, 2)
+  createdAt     DateTime      @default(now()) @map("created_at")
+
+  @@map("goal_contributions")
+}
+
+model RecurringTransaction {
+  id          String                 @id @default(uuid())
+  userId      String                 @map("user_id")
+  user        User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accountId   String                 @map("account_id")
+  account     Account                @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  categoryId  String?                @map("category_id")
+  category    Category?              @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  type        TxnType
+  amount      Decimal                @db.Decimal(14, 2)
+  description String?                @db.VarChar(255)
+  frequency   RecurFrequency
+  interval    Int                    @default(1)
+  startDate   DateTime               @map("start_date") @db.Date
+  endDate     DateTime?              @map("end_date") @db.Date
+  nextRunAt   DateTime               @map("next_run_at") @db.Date
+  lastRunAt   DateTime?              @map("last_run_at") @db.Date
+  isActive    Boolean                @default(true) @map("is_active")
+  createdAt   DateTime               @default(now()) @map("created_at")
+  updatedAt   DateTime               @updatedAt @map("updated_at")
+
+  generatedTransactions Transaction[]
+
+  @@index([nextRunAt, isActive])
+  @@map("recurring_transactions")
+}
+
+model Notification {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotifType
+  title     String    @db.VarChar(150)
+  body      String?   @db.Text
+  linkUrl   String?   @map("link_url")
+  isRead    Boolean   @default(false) @map("is_read")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@index([userId, isRead, createdAt(sort: Desc)])
+  @@map("notifications")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?  @map("user_id")
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action     String   @db.VarChar(80)
+  entityType String?  @map("entity_type") @db.VarChar(50)
+  entityId   String?  @map("entity_id")
+  ipAddress  String?  @map("ip_address")
+  userAgent  String?  @map("user_agent")
+  metadata   Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([action, createdAt(sort: Desc)])
+  @@map("audit_logs")
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id")
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expires      DateTime
+
+  @@map("sessions")
+}
+
+model OAuthAccount {
+  id                String  @id @default(uuid())
+  userId            String  @map("user_id")
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type              String
+  provider          String
+  providerAccountId String  @map("provider_account_id")
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+
+  @@unique([provider, providerAccountId])
+  @@map("oauth_accounts")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
