@@ -52,8 +52,19 @@ describe('Zod Validation Schemas (.strict())', () => {
         name: 'John',
         email: 'john@test.com',
         password: 'Password123!',
+        confirmPassword: 'Password123!',
       }).success
     ).toBe(true);
+
+    // Password mismatch
+    expect(
+      registerSchema.safeParse({
+        name: 'John',
+        email: 'john@test.com',
+        password: 'Password123!',
+        confirmPassword: 'Password456!',
+      }).success
+    ).toBe(false);
   });
 
   it('enforces transfer rules: destination required and cannot equal source', () => {

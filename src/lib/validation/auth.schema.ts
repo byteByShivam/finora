@@ -10,12 +10,18 @@ export const registerSchema = z
       .max(100, 'Password is too long')
       .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
       .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
-      .regex(/[0-9]/, 'Password must contain at least one number'),
-    currency: z.string().length(3).default('INR'),
-    timezone: z.string().default('Asia/Kolkata'),
-    locale: z.string().default('en-IN'),
+      .regex(/[0-9]/, 'Password must contain at least one number')
+      .regex(/[^A-Za-z0-9]/, 'Password must contain at least one special character'),
+    confirmPassword: z.string().min(1, 'Please confirm your password'),
+    currency: z.string().length(3).optional().default('INR'),
+    timezone: z.string().optional().default('Asia/Kolkata'),
+    locale: z.string().optional().default('en-IN'),
   })
-  .strict();
+  .strict()
+  .refine((data) => data.password === data.confirmPassword, {
+    message: 'Passwords do not match',
+    path: ['confirmPassword'],
+  });
 
 export type RegisterInput = z.infer<typeof registerSchema>;
 

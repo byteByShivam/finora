@@ -124,7 +124,7 @@ export function BudgetModal({ isOpen, onClose, categories, currency = 'INR' }: B
             className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
           />
           <label htmlFor="rollover" className="text-xs text-slate-700 cursor-pointer font-medium">
-            Enable rollover (add unspent amount to next month's budget)
+            Enable rollover (add unspent amount to next month&apos;s budget)
           </label>
         </div>
 

@@ -3,7 +3,7 @@
 import { useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Wallet, Loader2, ArrowRight, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Wallet, Loader2, ArrowRight, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { loginAction } from '@/app/actions/auth.actions';
 
 export default function LoginPage() {
@@ -11,11 +11,22 @@ export default function LoginPage() {
   const [isPending, startTransition] = useTransition();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    if (!email || !email.includes('@')) {
+      setError('Please enter a valid email address.');
+      return;
+    }
+
+    if (!password) {
+      setError('Please enter your password.');
+      return;
+    }
 
     startTransition(async () => {
       const res = await loginAction({ email, password });
@@ -47,9 +58,10 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-12 sm:px-6 lg:px-8">
       <div className="w-full max-w-md space-y-8 bg-white p-8 sm:p-10 rounded-2xl shadow-sm border border-slate-200">
+        {/* Brand Header */}
         <div className="text-center">
-          <Link href="/" className="inline-flex items-center gap-2 mb-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-sm">
+          <Link href="/" className="inline-flex items-center gap-2 mb-4 group">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-sm group-hover:bg-emerald-700 transition-colors">
               <Wallet className="h-6 w-6" />
             </div>
             <span className="text-2xl font-bold tracking-tight text-slate-900">Finora</span>
@@ -63,18 +75,25 @@ export default function LoginPage() {
           </p>
         </div>
 
+        {/* Error Alert */}
         {error && (
           <div className="rounded-xl bg-rose-50 border border-rose-200 p-4 text-sm text-rose-800 flex items-start gap-3">
             <AlertCircle className="h-5 w-5 text-rose-500 shrink-0 mt-0.5" />
-            <span>{error}</span>
+            <span className="font-medium">{error}</span>
           </div>
         )}
 
-        <form className="mt-8 space-y-5" onSubmit={handleSubmit}>
+        {/* Login Form */}
+        <form className="mt-8 space-y-5" onSubmit={handleSubmit} noValidate>
           <div>
-            <label className="block text-sm font-medium text-slate-700">Email address</label>
+            <label htmlFor="email" className="block text-sm font-medium text-slate-700">
+              Email address
+            </label>
             <input
+              id="email"
+              name="email"
               type="email"
+              autoComplete="email"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -85,16 +104,34 @@ export default function LoginPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700">Password</label>
-            <input
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              disabled={isPending}
-              placeholder="••••••••••••"
-              className="mt-1 block w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm placeholder-slate-400 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
-            />
+            <div className="flex items-center justify-between">
+              <label htmlFor="password" className="block text-sm font-medium text-slate-700">
+                Password
+              </label>
+            </div>
+            <div className="relative mt-1">
+              <input
+                id="password"
+                name="password"
+                type={showPassword ? 'text' : 'password'}
+                autoComplete="current-password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                disabled={isPending}
+                placeholder="••••••••••••"
+                className="block w-full rounded-xl border border-slate-300 px-3.5 py-2.5 pr-10 text-sm placeholder-slate-400 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                tabIndex={-1}
+                className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600 focus:outline-none"
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
           </div>
 
           <button
