@@ -177,6 +177,14 @@ async function main() {
     const cardAccId = accountIds['ICICI Sapphiro Card'];
     const investAccId = accountIds['Zerodha Trading'];
 
+    // Clean up previous user-generated rows to ensure idempotent seed runs
+    await prisma.notification.deleteMany({ where: { userId } });
+    await prisma.recurringTransaction.deleteMany({ where: { userId } });
+    await prisma.goalContribution.deleteMany({ where: { goal: { userId } } });
+    await prisma.financialGoal.deleteMany({ where: { userId } });
+    await prisma.budget.deleteMany({ where: { userId } });
+    await prisma.transaction.deleteMany({ where: { userId } });
+
     // Generate Transactions over past 12 months
     const rand = seededRandom(42 + userIndex * 100);
     const now = new Date();
@@ -436,12 +444,12 @@ async function main() {
     ];
 
     for (const g of goalsData) {
-      await prisma.financialGoal.create({
+      const goal = await prisma.financialGoal.create({
         data: {
           userId,
           name: g.name,
           targetAmount: new Prisma.Decimal(g.target),
-          currentAmount: new Prisma.Decimal(g.current),
+          currentAmount: new Prisma.Decimal(0),
           targetDate: g.targetDate,
           accountId: g.accountId,
           icon: g.icon,
@@ -449,6 +457,43 @@ async function main() {
           status: GoalStatus.active,
         },
       });
+
+      if (g.current > 0) {
+        const half1 = Math.floor(g.current * 0.6);
+        const half2 = g.current - half1;
+        const amounts = [half1, half2];
+
+        let totalContributed = new Prisma.Decimal(0);
+        for (let i = 0; i < amounts.length; i++) {
+          const amt = amounts[i];
+          const contribTxn = await prisma.transaction.create({
+            data: {
+              userId,
+              accountId: salaryAccId,
+              type: TxnType.expense,
+              amount: new Prisma.Decimal(amt),
+              currency: 'INR',
+              description: `Savings Contribution: ${g.name} (Part ${i + 1})`,
+              occurredAt: new Date(now.getFullYear(), now.getMonth() - (1 - i), 15),
+            },
+          });
+
+          await prisma.goalContribution.create({
+            data: {
+              goalId: goal.id,
+              transactionId: contribTxn.id,
+              amount: new Prisma.Decimal(amt),
+              createdAt: contribTxn.occurredAt,
+            },
+          });
+          totalContributed = totalContributed.add(new Prisma.Decimal(amt));
+        }
+
+        await prisma.financialGoal.update({
+          where: { id: goal.id },
+          data: { currentAmount: totalContributed },
+        });
+      }
     }
 
     // 5. Seed Recurring Transactions
