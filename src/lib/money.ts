@@ -56,7 +56,8 @@ export function calculatePercentage(part: DecimalValue, total: DecimalValue): nu
     return 0;
   }
   const pct = toDecimal(part).div(tot).mul(100);
-  return Math.min(Math.max(pct.toNumber(), 0), 100);
+  const clamped = Math.min(Math.max(pct.toNumber(), 0), 100);
+  return Math.round(clamped * 100) / 100;
 }
 
 /**

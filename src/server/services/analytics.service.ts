@@ -1,174 +1,278 @@
 import prisma from '@/server/db/prisma';
-import { getPeriodBounds, getPreviousMonthBounds } from '@/lib/dates';
-import { BudgetService, BudgetWithProgress } from './budget.service';
-import { GoalService } from './goal.service';
+import {
+  getDashboardPeriodRange,
+  DashboardPeriod,
+  formatDate,
+} from '@/lib/dates';
+import { calculatePercentage } from '@/lib/money';
 import { Prisma, TxnType, AccountType } from '@prisma/client';
+import {
+  startOfMonth,
+  endOfMonth,
+  eachDayOfInterval,
+  eachMonthOfInterval,
+  format,
+} from 'date-fns';
+
+export interface DashboardMetrics {
+  totalBalance: number;
+  totalAssets: number;
+  totalCreditDebt: number;
+  periodIncome: number;
+  periodExpense: number;
+  netCashFlow: number;
+  savingsRate: number;
+  activeAccountCount: number;
+  transactionCount: number;
+}
+
+export interface DashboardAccountItem {
+  id: string;
+  name: string;
+  type: AccountType;
+  currentBalance: number;
+  openingBalance: number;
+  creditLimit: number | null;
+  allocationPercentage: number;
+  color: string | null;
+  icon: string | null;
+  isArchived: boolean;
+}
+
+export interface DashboardCategoryBreakdown {
+  id: string;
+  name: string;
+  color: string;
+  icon: string | null;
+  amount: number;
+  percentage: number;
+}
+
+export interface DashboardTrendPoint {
+  date: string;
+  income: number;
+  expense: number;
+  netCashFlow: number;
+}
+
+export interface DashboardRecentTransaction {
+  id: string;
+  type: TxnType;
+  amount: number;
+  currency: string;
+  description: string | null;
+  notes: string | null;
+  occurredAt: string;
+  accountName: string;
+  accountColor: string | null;
+  transferAccountName: string | null;
+  categoryName: string | null;
+  categoryColor: string | null;
+  categoryIcon: string | null;
+}
 
 export interface DashboardSnapshot {
   period: {
-    from: Date;
-    to: Date;
+    key: DashboardPeriod;
+    label: string;
+    from: string;
+    to: string;
   };
-  metrics: {
-    totalBalance: number;
-    monthlyIncome: number;
-    monthlyExpense: number;
-    netSavings: number;
-    savingsRate: number; // percentage 0-100
-  };
-  accounts: {
-    id: string;
-    name: string;
-    type: AccountType;
-    balance: number;
-    color: string | null;
-    icon: string | null;
-  }[];
-  recentTransactions: {
-    id: string;
-    description: string | null;
-    amount: number;
-    type: TxnType;
-    categoryName: string | null;
-    categoryColor: string | null;
-    categoryIcon: string | null;
-    accountName: string;
-    occurredAt: Date;
-  }[];
-  categoryBreakdown: {
-    id: string;
-    name: string;
-    color: string;
-    amount: number;
-    percentage: number;
-  }[];
-  spendingTrend: {
-    date: string;
-    income: number;
-    expense: number;
-  }[];
-  budgets: BudgetWithProgress[];
-  goals: {
-    id: string;
-    name: string;
-    targetAmount: number;
-    currentAmount: number;
-    percentage: number;
-    remaining: number;
-    targetDate: Date | null;
-    color: string | null;
-    icon: string | null;
-  }[];
-  unreadNotificationsCount: number;
+  metrics: DashboardMetrics;
+  accounts: DashboardAccountItem[];
+  categoryBreakdown: DashboardCategoryBreakdown[];
+  cashFlowTrend: DashboardTrendPoint[];
+  recentTransactions: DashboardRecentTransaction[];
+  hasAccounts: boolean;
+  hasTransactions: boolean;
+  hasPeriodActivity: boolean;
+}
+
+export interface DashboardFilterOptions {
+  period?: DashboardPeriod | string;
+  from?: string | Date;
+  to?: string | Date;
 }
 
 export class AnalyticsService {
   /**
-   * Generates a single, coherent DashboardSnapshot DTO for the user.
-   * All aggregations are performed on the server.
+   * Generates a coherent, database-backed DashboardSnapshot DTO for the user.
+   * All aggregations and math are performed in the server service layer using Prisma.Decimal.
    */
-  static async getDashboardSnapshot(userId: string): Promise<DashboardSnapshot> {
-    const { start: from, end: to } = getPeriodBounds(new Date(), 'monthly');
+  static async getDashboardSnapshot(
+    userId: string,
+    options: DashboardFilterOptions = {}
+  ): Promise<DashboardSnapshot> {
+    const range = getDashboardPeriodRange(options.period || 'this_month', options.from, options.to);
+    const { from, to, label, period: periodKey } = range;
 
-    // 1. Accounts & Total Net Worth / Balance
+    // 1. User Accounts (Active & Archived)
     const userAccounts = await prisma.account.findMany({
-      where: { userId, isArchived: false },
-      orderBy: { currentBalance: 'desc' },
+      where: { userId },
+      orderBy: [{ isArchived: 'asc' }, { currentBalance: 'desc' }],
     });
 
-    let totalBalanceDec = new Prisma.Decimal(0);
-    const accountList = userAccounts.map((a) => {
-      const balNum = a.currentBalance.toNumber();
-      // In net worth, credit cards count as liabilities (negative contribution)
-      if (a.type === AccountType.credit_card) {
-        totalBalanceDec = totalBalanceDec.sub(a.currentBalance);
+    const activeAccounts = userAccounts.filter((a) => !a.isArchived);
+
+    let totalAssetsDec = new Prisma.Decimal(0);
+    let totalCreditDebtDec = new Prisma.Decimal(0);
+
+    for (const acc of activeAccounts) {
+      if (acc.type === AccountType.credit_card) {
+        // In the ledger, credit card spending results in a negative balance (or positive liability).
+        const cardDebt = acc.currentBalance.isNegative()
+          ? acc.currentBalance.abs()
+          : acc.currentBalance;
+        totalCreditDebtDec = totalCreditDebtDec.add(cardDebt);
       } else {
-        totalBalanceDec = totalBalanceDec.add(a.currentBalance);
+        totalAssetsDec = totalAssetsDec.add(acc.currentBalance);
       }
+    }
+
+    const totalNetBalanceDec = totalAssetsDec.sub(totalCreditDebtDec);
+
+    const accountList: DashboardAccountItem[] = activeAccounts.map((a) => {
+      const balNum = a.currentBalance.toNumber();
+      let allocationPercentage = 0;
+
+      if (a.type !== AccountType.credit_card && totalAssetsDec.greaterThan(0)) {
+        allocationPercentage = calculatePercentage(a.currentBalance, totalAssetsDec);
+      } else if (a.type === AccountType.credit_card && a.creditLimit && a.creditLimit.greaterThan(0)) {
+        allocationPercentage = calculatePercentage(a.currentBalance.abs(), a.creditLimit);
+      }
+
       return {
         id: a.id,
         name: a.name,
         type: a.type,
-        balance: balNum,
+        currentBalance: balNum,
+        openingBalance: a.openingBalance.toNumber(),
+        creditLimit: a.creditLimit ? a.creditLimit.toNumber() : null,
+        allocationPercentage,
         color: a.color,
         icon: a.icon,
+        isArchived: a.isArchived,
       };
     });
 
-    // 2. Current Month Income and Expense
-    const incomeAgg = await prisma.transaction.aggregate({
-      where: {
-        userId,
-        type: TxnType.income,
-        occurredAt: { gte: from, lte: to },
-      },
-      _sum: { amount: true },
-    });
-
-    const expenseAgg = await prisma.transaction.aggregate({
-      where: {
-        userId,
-        type: TxnType.expense,
-        occurredAt: { gte: from, lte: to },
-      },
-      _sum: { amount: true },
-    });
+    // 2. Period Financial Metrics (Income, Expense, Cash Flow)
+    const [incomeAgg, expenseAgg, periodTxnCount, totalAllTimeTxnCount] = await Promise.all([
+      prisma.transaction.aggregate({
+        where: {
+          userId,
+          type: TxnType.income,
+          occurredAt: { gte: from, lte: to },
+        },
+        _sum: { amount: true },
+      }),
+      prisma.transaction.aggregate({
+        where: {
+          userId,
+          type: TxnType.expense,
+          occurredAt: { gte: from, lte: to },
+        },
+        _sum: { amount: true },
+      }),
+      prisma.transaction.count({
+        where: {
+          userId,
+          occurredAt: { gte: from, lte: to },
+        },
+      }),
+      prisma.transaction.count({
+        where: { userId },
+      }),
+    ]);
 
     const incomeDec = incomeAgg._sum.amount || new Prisma.Decimal(0);
     const expenseDec = expenseAgg._sum.amount || new Prisma.Decimal(0);
-    const savingsDec = incomeDec.sub(expenseDec);
+    const netCashFlowDec = incomeDec.sub(expenseDec);
 
     let savingsRate = 0;
     if (incomeDec.greaterThan(0)) {
-      const rate = savingsDec.div(incomeDec).mul(100).toNumber();
-      savingsRate = Math.min(Math.max(Math.round(rate), -100), 100);
+      savingsRate = calculatePercentage(netCashFlowDec, incomeDec);
     }
 
-    // 3. Category Breakdown for current month expenses
+    // 3. Category Breakdown for Period Expenses
     const categoryExpenses = await prisma.transaction.findMany({
       where: {
         userId,
         type: TxnType.expense,
         occurredAt: { gte: from, lte: to },
-        categoryId: { not: null },
       },
-      include: { category: true },
+      select: {
+        amount: true,
+        categoryId: true,
+        category: {
+          select: { id: true, name: true, color: true, icon: true },
+        },
+      },
     });
 
-    const catTotalsMap = new Map<string, { name: string; color: string; total: Prisma.Decimal }>();
+    const catTotalsMap = new Map<
+      string,
+      { id: string; name: string; color: string; icon: string | null; total: Prisma.Decimal }
+    >();
+
     for (const txn of categoryExpenses) {
-      if (!txn.category) continue;
-      const cur = catTotalsMap.get(txn.category.id) || {
-        name: txn.category.name,
-        color: txn.category.color || '#64748b',
+      const catId = txn.category?.id || 'uncategorized';
+      const catName = txn.category?.name || 'Uncategorized';
+      const catColor = txn.category?.color || '#94a3b8';
+      const catIcon = txn.category?.icon || null;
+
+      const current = catTotalsMap.get(catId) || {
+        id: catId,
+        name: catName,
+        color: catColor,
+        icon: catIcon,
         total: new Prisma.Decimal(0),
       };
-      cur.total = cur.total.add(txn.amount);
-      catTotalsMap.set(txn.category.id, cur);
+      current.total = current.total.add(txn.amount);
+      catTotalsMap.set(catId, current);
     }
 
-    const catBreakdown = Array.from(catTotalsMap.entries())
-      .map(([id, item]) => {
-        const amt = item.total.toNumber();
-        const pct = expenseDec.greaterThan(0)
-          ? Math.round(item.total.div(expenseDec).mul(100).toNumber())
-          : 0;
-        return {
-          id,
-          name: item.name,
-          color: item.color,
-          amount: amt,
-          percentage: pct,
-        };
-      })
+    const categoryBreakdown: DashboardCategoryBreakdown[] = Array.from(catTotalsMap.values())
+      .map((item) => ({
+        id: item.id,
+        name: item.name,
+        color: item.color,
+        icon: item.icon,
+        amount: item.total.toNumber(),
+        percentage: expenseDec.greaterThan(0) ? calculatePercentage(item.total, expenseDec) : 0,
+      }))
       .sort((a, b) => b.amount - a.amount);
 
-    // 4. Daily Spending Trend for current month
-    const monthTxns = await prisma.transaction.findMany({
+    // 4. Cash Flow & Income vs Expense Trend (Time-Bucket Aggregation)
+    const diffDays = Math.ceil((to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24));
+    const isDaily = diffDays <= 35;
+
+    const trendPointsMap = new Map<string, { income: Prisma.Decimal; expense: Prisma.Decimal }>();
+
+    if (isDaily) {
+      const days = eachDayOfInterval({ start: from, end: to });
+      for (const d of days) {
+        const key = format(d, 'yyyy-MM-dd');
+        trendPointsMap.set(key, {
+          income: new Prisma.Decimal(0),
+          expense: new Prisma.Decimal(0),
+        });
+      }
+    } else {
+      const months = eachMonthOfInterval({ start: from, end: to });
+      for (const m of months) {
+        const key = format(m, 'yyyy-MM');
+        trendPointsMap.set(key, {
+          income: new Prisma.Decimal(0),
+          expense: new Prisma.Decimal(0),
+        });
+      }
+    }
+
+    const trendTxns = await prisma.transaction.findMany({
       where: {
         userId,
-        occurredAt: { gte: from, lte: to },
         type: { in: [TxnType.income, TxnType.expense] },
+        occurredAt: { gte: from, lte: to },
       },
       select: {
         type: true,
@@ -177,97 +281,95 @@ export class AnalyticsService {
       },
     });
 
-    const trendDaysMap = new Map<string, { income: number; expense: number }>();
-    const totalDays = to.getDate();
-    for (let d = 1; d <= totalDays; d++) {
-      const dayKey = `${d.toString().padStart(2, '0')}`;
-      trendDaysMap.set(dayKey, { income: 0, expense: 0 });
-    }
-
-    for (const t of monthTxns) {
-      const dayKey = `${t.occurredAt.getDate().toString().padStart(2, '0')}`;
-      const entry = trendDaysMap.get(dayKey);
-      if (entry) {
+    for (const t of trendTxns) {
+      const key = isDaily ? format(t.occurredAt, 'yyyy-MM-dd') : format(t.occurredAt, 'yyyy-MM');
+      const point = trendPointsMap.get(key);
+      if (point) {
         if (t.type === TxnType.income) {
-          entry.income += t.amount.toNumber();
+          point.income = point.income.add(t.amount);
         } else if (t.type === TxnType.expense) {
-          entry.expense += t.amount.toNumber();
+          point.expense = point.expense.add(t.amount);
         }
       }
     }
 
-    const spendingTrend = Array.from(trendDaysMap.entries()).map(([day, val]) => ({
-      date: `Day ${day}`,
-      income: val.income,
-      expense: val.expense,
-    }));
+    const cashFlowTrend: DashboardTrendPoint[] = Array.from(trendPointsMap.entries()).map(
+      ([key, val]) => {
+        const dateLabel = isDaily
+          ? format(new Date(key), 'dd MMM')
+          : format(new Date(`${key}-01`), 'MMM yyyy');
 
-    // 5. Recent 6 Transactions
+        const incNum = val.income.toNumber();
+        const expNum = val.expense.toNumber();
+        const netNum = val.income.sub(val.expense).toNumber();
+
+        return {
+          date: dateLabel,
+          income: incNum,
+          expense: expNum,
+          netCashFlow: netNum,
+        };
+      }
+    );
+
+    // 5. Recent Transactions Widget (Latest 6 transactions across all types)
     const recentTxnsRaw = await prisma.transaction.findMany({
       where: { userId },
       include: {
-        category: true,
-        account: true,
+        account: { select: { id: true, name: true, color: true } },
+        transferAccount: { select: { id: true, name: true, color: true } },
+        category: { select: { id: true, name: true, color: true, icon: true } },
       },
       orderBy: { occurredAt: 'desc' },
       take: 6,
     });
 
-    const recentTransactions = recentTxnsRaw.map((t) => ({
+    const recentTransactions: DashboardRecentTransaction[] = recentTxnsRaw.map((t) => ({
       id: t.id,
-      description: t.description || (t.type === TxnType.transfer ? 'Transfer' : t.category?.name || 'Uncategorized'),
-      amount: t.amount.toNumber(),
       type: t.type,
-      categoryName: t.category?.name || null,
-      categoryColor: t.category?.color || null,
-      categoryIcon: t.category?.icon || null,
+      amount: t.amount.toNumber(),
+      currency: t.currency,
+      description: t.description,
+      notes: t.notes,
+      occurredAt: t.occurredAt.toISOString(),
       accountName: t.account.name,
-      occurredAt: t.occurredAt,
+      accountColor: t.account.color,
+      transferAccountName: t.transferAccount ? t.transferAccount.name : null,
+      categoryName: t.category ? t.category.name : null,
+      categoryColor: t.category ? t.category.color : null,
+      categoryIcon: t.category ? t.category.icon : null,
     }));
-
-    // 6. Budgets with actual spend
-    const budgets = await BudgetService.getForPeriod(userId, from, 'monthly');
-
-    // 7. Goals with progress
-    const goalsRaw = await GoalService.list(userId);
-    const goals = goalsRaw.slice(0, 3).map((g) => ({
-      id: g.id,
-      name: g.name,
-      targetAmount: g.targetAmountNum,
-      currentAmount: g.currentAmountNum,
-      percentage: g.percentage,
-      remaining: g.remaining,
-      targetDate: g.targetDate,
-      color: g.color,
-      icon: g.icon,
-    }));
-
-    // 8. Notifications unread
-    const unreadNotificationsCount = await prisma.notification.count({
-      where: { userId, isRead: false },
-    });
 
     return {
-      period: { from, to },
+      period: {
+        key: periodKey,
+        label,
+        from: from.toISOString(),
+        to: to.toISOString(),
+      },
       metrics: {
-        totalBalance: totalBalanceDec.toNumber(),
-        monthlyIncome: incomeDec.toNumber(),
-        monthlyExpense: expenseDec.toNumber(),
-        netSavings: savingsDec.toNumber(),
+        totalBalance: totalNetBalanceDec.toNumber(),
+        totalAssets: totalAssetsDec.toNumber(),
+        totalCreditDebt: totalCreditDebtDec.toNumber(),
+        periodIncome: incomeDec.toNumber(),
+        periodExpense: expenseDec.toNumber(),
+        netCashFlow: netCashFlowDec.toNumber(),
         savingsRate,
+        activeAccountCount: activeAccounts.length,
+        transactionCount: periodTxnCount,
       },
       accounts: accountList,
+      categoryBreakdown,
+      cashFlowTrend,
       recentTransactions,
-      categoryBreakdown: catBreakdown,
-      spendingTrend,
-      budgets,
-      goals,
-      unreadNotificationsCount,
+      hasAccounts: userAccounts.length > 0,
+      hasTransactions: totalAllTimeTxnCount > 0,
+      hasPeriodActivity: periodTxnCount > 0,
     };
   }
 
   /**
-   * Deep analytics breakdown for the /analytics page.
+   * Deep annual analytics breakdown for the /analytics page.
    */
   static async getAnalytics(userId: string, year: number = new Date().getFullYear()) {
     const startOfYear = new Date(year, 0, 1);
@@ -282,7 +384,6 @@ export class AnalyticsService {
       orderBy: { occurredAt: 'asc' },
     });
 
-    // Monthly totals (12 months)
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const monthlySeries = monthNames.map((name) => ({
       month: name,
@@ -331,7 +432,6 @@ export class AnalyticsService {
       }))
       .sort((a, b) => b.amount - a.amount);
 
-    // Account distribution
     const accounts = await prisma.account.findMany({
       where: { userId, isArchived: false },
     });
@@ -353,3 +453,4 @@ export class AnalyticsService {
     };
   }
 }
+

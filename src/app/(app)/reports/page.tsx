@@ -10,9 +10,9 @@ export default async function ReportsPage() {
 
   const report = {
     period: `${new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(new Date())}`,
-    totalIncome: snapshot.metrics.monthlyIncome,
-    totalExpense: snapshot.metrics.monthlyExpense,
-    netSavings: snapshot.metrics.netSavings,
+    totalIncome: snapshot.metrics.periodIncome,
+    totalExpense: snapshot.metrics.periodExpense,
+    netSavings: snapshot.metrics.netCashFlow,
     savingsRate: snapshot.metrics.savingsRate,
     categoryBreakdown: snapshot.categoryBreakdown,
   };

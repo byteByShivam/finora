@@ -1,22 +1,44 @@
 import { requireUser } from '@/server/auth/session';
 import { AnalyticsService } from '@/server/services/analytics.service';
+import { AccountService } from '@/server/services/account.service';
 import { CategoryService } from '@/server/services/category.service';
 import { DashboardView } from '@/components/dashboard/dashboard-view';
 
 export const dynamic = 'force-dynamic';
 
-export default async function DashboardPage() {
-  const user = await requireUser();
+interface DashboardPageProps {
+  searchParams: Promise<{
+    period?: string;
+    from?: string;
+    to?: string;
+  }>;
+}
 
-  const [snapshot, rawCategories] = await Promise.all([
-    AnalyticsService.getDashboardSnapshot(user.id),
+export default async function DashboardPage({ searchParams }: DashboardPageProps) {
+  const user = await requireUser();
+  const params = await searchParams;
+
+  const [snapshot, rawAccounts, rawCategories] = await Promise.all([
+    AnalyticsService.getDashboardSnapshot(user.id, {
+      period: params.period,
+      from: params.from,
+      to: params.to,
+    }),
+    AccountService.list(user.id, { isArchived: false }),
     CategoryService.list(user.id),
   ]);
+
+  const accounts = rawAccounts.map((a) => ({
+    id: a.id,
+    name: a.name,
+    currency: a.currency,
+  }));
 
   const categories = rawCategories.map((c) => ({
     id: c.id,
     name: c.name,
     type: c.type,
+    color: c.color,
   }));
 
   return (
@@ -31,6 +53,7 @@ export default async function DashboardPage() {
       <DashboardView
         snapshot={snapshot}
         currency={user.currency}
+        accounts={accounts}
         categories={categories}
       />
     </div>
