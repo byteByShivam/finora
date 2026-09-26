@@ -1,6 +1,56 @@
 import prisma from '@/server/db/prisma';
 import { CreateAccountInput, UpdateAccountInput } from '@/lib/validation/account.schema';
-import { Prisma, TxnType } from '@prisma/client';
+import { Prisma, TxnType, AccountType, Account } from '@prisma/client';
+
+export interface AccountDetailStats {
+  openingBalance: Prisma.Decimal;
+  currentBalance: Prisma.Decimal;
+  totalIncome: Prisma.Decimal;
+  totalExpense: Prisma.Decimal;
+  totalTransferIn: Prisma.Decimal;
+  totalTransferOut: Prisma.Decimal;
+  totalInflows: Prisma.Decimal;
+  totalOutflows: Prisma.Decimal;
+  netChange: Prisma.Decimal;
+  transactionCount: number;
+  creditUtilizationPct: number | null;
+}
+
+export interface AccountDetailResult {
+  account: Account;
+  stats: AccountDetailStats;
+  recentTransactions: Array<{
+    id: string;
+    userId: string;
+    accountId: string;
+    transferAccountId: string | null;
+    categoryId: string | null;
+    type: TxnType;
+    amount: Prisma.Decimal;
+    currency: string;
+    description: string | null;
+    notes: string | null;
+    occurredAt: Date;
+    isReconciled: boolean;
+    createdAt: Date;
+    updatedAt: Date;
+    category: {
+      id: string;
+      name: string;
+      icon: string | null;
+      color: string | null;
+    } | null;
+    transferAccount: {
+      id: string;
+      name: string;
+      color: string | null;
+    } | null;
+    account: {
+      id: string;
+      name: string;
+    };
+  }>;
+}
 
 export class AccountService {
   /**
@@ -65,11 +115,35 @@ export class AccountService {
   }
 
   /**
-   * Lists all accounts owned by the user.
+   * Lists accounts owned by the user, with optional filters and transaction counts.
    */
-  static async list(userId: string) {
+  static async list(
+    userId: string,
+    filters?: {
+      type?: AccountType;
+      isArchived?: boolean;
+      search?: string;
+    }
+  ) {
     return prisma.account.findMany({
-      where: { userId },
+      where: {
+        userId,
+        ...(filters?.type && { type: filters.type }),
+        ...(filters?.isArchived !== undefined && { isArchived: filters.isArchived }),
+        ...(filters?.search && {
+          name: {
+            contains: filters.search,
+            mode: 'insensitive',
+          },
+        }),
+      },
+      include: {
+        _count: {
+          select: {
+            transactions: true,
+          },
+        },
+      },
       orderBy: [{ isArchived: 'asc' }, { createdAt: 'desc' }],
     });
   }
@@ -80,7 +154,124 @@ export class AccountService {
   static async getById(userId: string, accountId: string) {
     return prisma.account.findFirst({
       where: { id: accountId, userId },
+      include: {
+        _count: {
+          select: {
+            transactions: true,
+          },
+        },
+      },
     });
+  }
+
+  /**
+   * Retrieves comprehensive account details including server-computed
+   * financial statistics and recent transactions.
+   */
+  static async getAccountDetail(userId: string, accountId: string): Promise<AccountDetailResult | null> {
+    const account = await prisma.account.findFirst({
+      where: { id: accountId, userId },
+    });
+
+    if (!account) {
+      return null;
+    }
+
+    // Income
+    const incomeAgg = await prisma.transaction.aggregate({
+      where: { userId, accountId, type: TxnType.income },
+      _sum: { amount: true },
+    });
+
+    // Expense
+    const expenseAgg = await prisma.transaction.aggregate({
+      where: { userId, accountId, type: TxnType.expense },
+      _sum: { amount: true },
+    });
+
+    // Outbound transfers
+    const transferOutAgg = await prisma.transaction.aggregate({
+      where: { userId, accountId, type: TxnType.transfer },
+      _sum: { amount: true },
+    });
+
+    // Inbound transfers
+    const transferInAgg = await prisma.transaction.aggregate({
+      where: { userId, transferAccountId: accountId, type: TxnType.transfer },
+      _sum: { amount: true },
+    });
+
+    const totalIncome = incomeAgg._sum.amount || new Prisma.Decimal(0);
+    const totalExpense = expenseAgg._sum.amount || new Prisma.Decimal(0);
+    const totalTransferOut = transferOutAgg._sum.amount || new Prisma.Decimal(0);
+    const totalTransferIn = transferInAgg._sum.amount || new Prisma.Decimal(0);
+
+    const totalInflows = totalIncome.add(totalTransferIn);
+    const totalOutflows = totalExpense.add(totalTransferOut);
+    const netChange = totalInflows.sub(totalOutflows);
+
+    const transactionCount = await prisma.transaction.count({
+      where: {
+        userId,
+        OR: [{ accountId }, { transferAccountId: accountId }],
+      },
+    });
+
+    let creditUtilizationPct: number | null = null;
+    if (account.type === AccountType.credit_card && account.creditLimit && account.creditLimit.greaterThan(0)) {
+      const pct = account.currentBalance.div(account.creditLimit).mul(100).toNumber();
+      creditUtilizationPct = Math.min(Math.max(pct, 0), 100);
+    }
+
+    const recentTransactions = await prisma.transaction.findMany({
+      where: {
+        userId,
+        OR: [{ accountId }, { transferAccountId: accountId }],
+      },
+      orderBy: { occurredAt: 'desc' },
+      take: 50,
+      include: {
+        category: {
+          select: {
+            id: true,
+            name: true,
+            icon: true,
+            color: true,
+          },
+        },
+        transferAccount: {
+          select: {
+            id: true,
+            name: true,
+            color: true,
+          },
+        },
+        account: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    });
+
+    return {
+      account,
+      stats: {
+        openingBalance: account.openingBalance,
+        currentBalance: account.currentBalance,
+        totalIncome,
+        totalExpense,
+        totalTransferIn,
+        totalTransferOut,
+        totalInflows,
+        totalOutflows,
+        netChange,
+        transactionCount,
+        creditUtilizationPct,
+      },
+      recentTransactions,
+    };
   }
 
   /**
@@ -95,7 +286,7 @@ export class AccountService {
       throw new Error(`An account named "${input.name}" already exists.`);
     }
 
-    const opening = new Prisma.Decimal(input.openingBalance);
+    const opening = new Prisma.Decimal(input.openingBalance ?? 0);
 
     return prisma.account.create({
       data: {
@@ -119,6 +310,15 @@ export class AccountService {
     const account = await this.getById(userId, accountId);
     if (!account) {
       throw new Error('Account not found');
+    }
+
+    if (input.name && input.name !== account.name) {
+      const existing = await prisma.account.findUnique({
+        where: { userId_name: { userId, name: input.name } },
+      });
+      if (existing) {
+        throw new Error(`An account named "${input.name}" already exists.`);
+      }
     }
 
     return prisma.account.update({

@@ -1,8 +1,15 @@
 'use server';
 
 import { requireUser } from '@/server/auth/session';
-import { createAccountSchema, updateAccountSchema, CreateAccountInput, UpdateAccountInput } from '@/lib/validation/account.schema';
+import {
+  createAccountSchema,
+  updateAccountSchema,
+  CreateAccountInput,
+  UpdateAccountInput,
+} from '@/lib/validation/account.schema';
 import { AccountService } from '@/server/services/account.service';
+import prisma from '@/server/db/prisma';
+import { headers } from 'next/headers';
 import { revalidatePath } from 'next/cache';
 import { ActionResult } from '@/types/actions';
 import { Account } from '@prisma/client';
@@ -26,7 +33,10 @@ export async function createAccountAction(rawInput: CreateAccountInput): Promise
   }
 }
 
-export async function updateAccountAction(accountId: string, rawInput: UpdateAccountInput): Promise<ActionResult<Account>> {
+export async function updateAccountAction(
+  accountId: string,
+  rawInput: UpdateAccountInput
+): Promise<ActionResult<Account>> {
   try {
     const user = await requireUser();
     const parsed = updateAccountSchema.safeParse(rawInput);
@@ -36,6 +46,7 @@ export async function updateAccountAction(accountId: string, rawInput: UpdateAcc
 
     const updated = await AccountService.update(user.id, accountId, parsed.data);
     revalidatePath('/accounts');
+    revalidatePath(`/accounts/${accountId}`);
     revalidatePath('/dashboard');
     return { success: true, data: updated };
   } catch (err: unknown) {
@@ -44,11 +55,15 @@ export async function updateAccountAction(accountId: string, rawInput: UpdateAcc
   }
 }
 
-export async function toggleArchiveAccountAction(accountId: string, isArchived: boolean): Promise<ActionResult<Account>> {
+export async function toggleArchiveAccountAction(
+  accountId: string,
+  isArchived: boolean
+): Promise<ActionResult<Account>> {
   try {
     const user = await requireUser();
     const updated = await AccountService.toggleArchive(user.id, accountId, isArchived);
     revalidatePath('/accounts');
+    revalidatePath(`/accounts/${accountId}`);
     revalidatePath('/dashboard');
     return { success: true, data: updated };
   } catch (err: unknown) {
@@ -61,6 +76,27 @@ export async function deleteAccountAction(accountId: string): Promise<ActionResu
   try {
     const user = await requireUser();
     await AccountService.delete(user.id, accountId);
+
+    // Audit logging for sensitive account deletion per finora-architecture.md §9
+    try {
+      const headerList = await headers();
+      const ip = headerList.get('x-forwarded-for')?.split(',')[0].trim() || '127.0.0.1';
+      const userAgent = headerList.get('user-agent') || 'Unknown';
+
+      await prisma.auditLog.create({
+        data: {
+          userId: user.id,
+          action: 'account.delete',
+          entityType: 'Account',
+          entityId: accountId,
+          ipAddress: ip,
+          userAgent,
+        },
+      });
+    } catch {
+      // Audit log non-blocking fallback
+    }
+
     revalidatePath('/accounts');
     revalidatePath('/dashboard');
     return { success: true, data: undefined };
