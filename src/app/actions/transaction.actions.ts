@@ -13,24 +13,37 @@ import { TxnType, Transaction } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
 import { ActionResult } from '@/types/actions';
 
-export async function createTransactionAction(rawInput: CreateTransactionInput): Promise<ActionResult<Transaction>> {
+export async function createTransactionAction(
+  rawInput: CreateTransactionInput
+): Promise<ActionResult<Transaction>> {
   try {
     const user = await requireUser();
     const parsed = createTransactionSchema.safeParse(rawInput);
     if (!parsed.success) {
-      return { success: false, error: parsed.error.issues[0]?.message || 'Invalid transaction data.' };
+      return {
+        success: false,
+        error: parsed.error.issues[0]?.message || 'Invalid transaction data.',
+      };
     }
 
     const txn = await TransactionService.create(user.id, parsed.data);
 
-    // If expense, check budget threshold alert
+    // If expense, check budget threshold alert asynchronously
     if (parsed.data.type === TxnType.expense && parsed.data.categoryId) {
-      await BudgetService.checkThresholdAlert(user.id, parsed.data.categoryId, parsed.data.occurredAt).catch(() => {});
+      await BudgetService.checkThresholdAlert(
+        user.id,
+        parsed.data.categoryId,
+        parsed.data.occurredAt
+      ).catch(() => {});
     }
 
     revalidatePath('/transactions');
     revalidatePath('/dashboard');
     revalidatePath('/accounts');
+    revalidatePath(`/accounts/${parsed.data.accountId}`);
+    if (parsed.data.transferAccountId) {
+      revalidatePath(`/accounts/${parsed.data.transferAccountId}`);
+    }
     revalidatePath('/budgets');
     revalidatePath('/analytics');
 
@@ -49,7 +62,10 @@ export async function updateTransactionAction(
     const user = await requireUser();
     const parsed = updateTransactionSchema.safeParse(rawInput);
     if (!parsed.success) {
-      return { success: false, error: parsed.error.issues[0]?.message || 'Invalid input.' };
+      return {
+        success: false,
+        error: parsed.error.issues[0]?.message || 'Invalid input.',
+      };
     }
 
     const updated = await TransactionService.update(user.id, transactionId, parsed.data);
@@ -57,6 +73,10 @@ export async function updateTransactionAction(
     revalidatePath('/transactions');
     revalidatePath('/dashboard');
     revalidatePath('/accounts');
+    revalidatePath(`/accounts/${updated.accountId}`);
+    if (updated.transferAccountId) {
+      revalidatePath(`/accounts/${updated.transferAccountId}`);
+    }
     revalidatePath('/budgets');
     revalidatePath('/analytics');
 
@@ -67,7 +87,9 @@ export async function updateTransactionAction(
   }
 }
 
-export async function deleteTransactionAction(transactionId: string): Promise<ActionResult<void>> {
+export async function deleteTransactionAction(
+  transactionId: string
+): Promise<ActionResult<void>> {
   try {
     const user = await requireUser();
     await TransactionService.delete(user.id, transactionId);

@@ -3,15 +3,18 @@ import { TxnType } from '@prisma/client';
 
 export const createTransactionSchema = z
   .object({
-    accountId: z.string().min(1, 'Account is required'),
-    transferAccountId: z.string().optional().nullable(),
-    categoryId: z.string().optional().nullable(),
+    accountId: z.string().trim().min(1, 'Account is required'),
+    transferAccountId: z.string().trim().optional().nullable(),
+    categoryId: z.string().trim().optional().nullable(),
     type: z.nativeEnum(TxnType),
-    amount: z.number().positive('Amount must be greater than zero'),
-    currency: z.string().length(3).optional().default('INR'),
-    description: z.string().max(255).optional().nullable(),
-    notes: z.string().optional().nullable(),
-    occurredAt: z.date().optional().default(() => new Date()),
+    amount: z.coerce
+      .number()
+      .finite('Amount must be a finite number')
+      .positive('Amount must be greater than zero'),
+    currency: z.string().trim().length(3, 'Currency must be 3 characters').optional().default('INR'),
+    description: z.string().trim().max(255, 'Description cannot exceed 255 characters').optional().nullable(),
+    notes: z.string().trim().optional().nullable(),
+    occurredAt: z.coerce.date().optional().default(() => new Date()),
   })
   .strict()
   .refine(
@@ -27,33 +30,73 @@ export const createTransactionSchema = z
     }
   );
 
-export type CreateTransactionInput = z.input<typeof createTransactionSchema>;
+export interface CreateTransactionInput {
+  accountId: string;
+  transferAccountId?: string | null;
+  categoryId?: string | null;
+  type: TxnType;
+  amount: number | string;
+  currency?: string;
+  description?: string | null;
+  notes?: string | null;
+  occurredAt?: Date | string;
+}
 
 export const updateTransactionSchema = z
   .object({
-    accountId: z.string().min(1).optional(),
-    transferAccountId: z.string().optional().nullable(),
-    categoryId: z.string().optional().nullable(),
+    accountId: z.string().trim().min(1).optional(),
+    transferAccountId: z.string().trim().optional().nullable(),
+    categoryId: z.string().trim().optional().nullable(),
     type: z.nativeEnum(TxnType).optional(),
-    amount: z.number().positive().optional(),
-    currency: z.string().length(3).optional(),
-    description: z.string().max(255).optional().nullable(),
-    notes: z.string().optional().nullable(),
-    occurredAt: z.date().optional(),
+    amount: z.coerce
+      .number()
+      .finite('Amount must be a finite number')
+      .positive('Amount must be greater than zero')
+      .optional(),
+    currency: z.string().trim().length(3).optional(),
+    description: z.string().trim().max(255).optional().nullable(),
+    notes: z.string().trim().optional().nullable(),
+    occurredAt: z.coerce.date().optional(),
   })
   .strict();
 
-export type UpdateTransactionInput = z.input<typeof updateTransactionSchema>;
+export interface UpdateTransactionInput {
+  accountId?: string;
+  transferAccountId?: string | null;
+  categoryId?: string | null;
+  type?: TxnType;
+  amount?: number | string;
+  currency?: string;
+  description?: string | null;
+  notes?: string | null;
+  occurredAt?: Date | string;
+}
 
-export const transactionFilterSchema = z.object({
-  accountId: z.string().optional(),
-  categoryId: z.string().optional(),
-  type: z.nativeEnum(TxnType).optional(),
-  search: z.string().optional(),
-  startDate: z.date().optional(),
-  endDate: z.date().optional(),
-  page: z.number().int().positive().optional().default(1),
-  pageSize: z.number().int().positive().max(100).optional().default(20),
-});
+export const transactionFilterSchema = z
+  .object({
+    accountId: z.string().trim().optional(),
+    categoryId: z.string().trim().optional(),
+    type: z.nativeEnum(TxnType).optional(),
+    search: z.string().trim().optional(),
+    startDate: z.coerce.date().optional(),
+    endDate: z.coerce.date().optional(),
+    sortBy: z
+      .enum(['newest', 'oldest', 'highest_amount', 'lowest_amount'])
+      .optional()
+      .default('newest'),
+    page: z.coerce.number().int().positive().optional().default(1),
+    pageSize: z.coerce.number().int().positive().max(100).optional().default(20),
+  })
+  .strict();
 
-export type TransactionFilterInput = Partial<z.input<typeof transactionFilterSchema>>;
+export interface TransactionFilterInput {
+  accountId?: string;
+  categoryId?: string;
+  type?: TxnType;
+  search?: string;
+  startDate?: Date;
+  endDate?: Date;
+  sortBy?: 'newest' | 'oldest' | 'highest_amount' | 'lowest_amount';
+  page?: number;
+  pageSize?: number;
+}

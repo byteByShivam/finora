@@ -1,12 +1,16 @@
 import prisma from '@/server/db/prisma';
-import { CreateTransactionInput, UpdateTransactionInput, TransactionFilterInput } from '@/lib/validation/transaction.schema';
+import {
+  CreateTransactionInput,
+  UpdateTransactionInput,
+  TransactionFilterInput,
+} from '@/lib/validation/transaction.schema';
 import { AccountService } from './account.service';
 import { Prisma, TxnType } from '@prisma/client';
 
 export class TransactionService {
   /**
-   * Creates a transaction, updates the affected account balances,
-   * and verifies user ownership in an application-level transaction.
+   * Creates a transaction, updates the affected account balances atomically,
+   * enforces user ownership, and records audit logs.
    */
   static async create(userId: string, input: CreateTransactionInput) {
     return prisma.$transaction(async (tx) => {
@@ -35,8 +39,8 @@ export class TransactionService {
         }
       }
 
-      // 3. Category verification (if provided)
-      if (input.categoryId) {
+      // 3. Category verification (if provided for income/expense)
+      if (input.type !== TxnType.transfer && input.categoryId) {
         const category = await tx.category.findFirst({
           where: {
             id: input.categoryId,
@@ -44,8 +48,18 @@ export class TransactionService {
           },
         });
         if (!category) {
-          throw new Error('Category not found.');
+          throw new Error('Category not found or does not belong to user.');
         }
+        if (category.type !== (input.type as string)) {
+          throw new Error(
+            `Category type "${category.type}" does not match transaction type "${input.type}".`
+          );
+        }
+      }
+
+      const amountDec = new Prisma.Decimal(input.amount);
+      if (amountDec.lessThanOrEqualTo(0)) {
+        throw new Error('Amount must be greater than zero.');
       }
 
       // 4. Create transaction row
@@ -54,13 +68,13 @@ export class TransactionService {
           userId,
           accountId: input.accountId,
           transferAccountId: input.type === TxnType.transfer ? input.transferAccountId : null,
-          categoryId: input.type === TxnType.transfer ? null : input.categoryId,
+          categoryId: input.type === TxnType.transfer ? null : input.categoryId || null,
           type: input.type,
-          amount: new Prisma.Decimal(input.amount),
+          amount: amountDec,
           currency: input.currency || sourceAccount.currency,
           description: input.description || null,
           notes: input.notes || null,
-          occurredAt: input.occurredAt || new Date(),
+          occurredAt: input.occurredAt ? new Date(input.occurredAt) : new Date(),
         },
       });
 
@@ -72,12 +86,29 @@ export class TransactionService {
         await AccountService.recomputeBalance(tx, userId, input.transferAccountId);
       }
 
+      // 7. Audit log for transfers or transactions
+      await tx.auditLog.create({
+        data: {
+          userId,
+          action: input.type === TxnType.transfer ? 'transaction.transfer' : 'transaction.create',
+          entityType: 'Transaction',
+          entityId: txn.id,
+          metadata: {
+            type: txn.type,
+            amount: txn.amount.toString(),
+            accountId: txn.accountId,
+            transferAccountId: txn.transferAccountId,
+          },
+        },
+      }).catch(() => {});
+
       return txn;
     });
   }
 
   /**
-   * Updates an existing transaction and updates all affected account balances.
+   * Updates an existing transaction, reverses old effects, and applies new effects
+   * across all affected account balances atomically inside a transaction.
    */
   static async update(userId: string, transactionId: string, input: UpdateTransactionInput) {
     return prisma.$transaction(async (tx) => {
@@ -94,51 +125,114 @@ export class TransactionService {
         affectedAccountIds.add(existing.transferAccountId);
       }
 
-      // If new account provided, check ownership
+      const targetType = input.type || existing.type;
+      const targetAccountId = input.accountId || existing.accountId;
+
+      // Verify new source account ownership if provided
       if (input.accountId && input.accountId !== existing.accountId) {
         const newAcc = await tx.account.findFirst({
           where: { id: input.accountId, userId },
         });
-        if (!newAcc) throw new Error('Account not found.');
+        if (!newAcc) {
+          throw new Error('Source account not found or not owned by user.');
+        }
         affectedAccountIds.add(input.accountId);
       }
 
-      // If transfer destination provided, check ownership
-      if (input.transferAccountId && input.transferAccountId !== existing.transferAccountId) {
+      // Verify destination account if transfer
+      let targetTransferAccountId = existing.transferAccountId;
+      if (targetType === TxnType.transfer) {
+        targetTransferAccountId =
+          input.transferAccountId !== undefined ? input.transferAccountId : existing.transferAccountId;
+
+        if (!targetTransferAccountId) {
+          throw new Error('Destination account is required for transfers.');
+        }
+        if (targetTransferAccountId === targetAccountId) {
+          throw new Error('Source and destination accounts cannot be identical.');
+        }
+
         const destAcc = await tx.account.findFirst({
-          where: { id: input.transferAccountId, userId },
+          where: { id: targetTransferAccountId, userId },
         });
-        if (!destAcc) throw new Error('Destination account not found.');
-        affectedAccountIds.add(input.transferAccountId);
+        if (!destAcc) {
+          throw new Error('Destination account not found or not owned by user.');
+        }
+        affectedAccountIds.add(targetTransferAccountId);
+      } else {
+        // If type changed from transfer to income/expense, clear transferAccountId
+        targetTransferAccountId = null;
       }
 
-      // 2. Perform update
+      // Verify category if provided
+      let targetCategoryId = existing.categoryId;
+      if (targetType === TxnType.transfer) {
+        targetCategoryId = null;
+      } else if (input.categoryId !== undefined) {
+        if (input.categoryId) {
+          const category = await tx.category.findFirst({
+            where: {
+              id: input.categoryId,
+              OR: [{ userId: null }, { userId }],
+            },
+          });
+          if (!category) {
+            throw new Error('Category not found or does not belong to user.');
+          }
+          if (category.type !== (targetType as string)) {
+            throw new Error(
+              `Category type "${category.type}" does not match transaction type "${targetType}".`
+            );
+          }
+          targetCategoryId = input.categoryId;
+        } else {
+          targetCategoryId = null;
+        }
+      }
+
+      // 2. Perform transaction update
       const updated = await tx.transaction.update({
         where: { id: transactionId },
         data: {
-          ...(input.accountId && { accountId: input.accountId }),
-          ...(input.transferAccountId !== undefined && { transferAccountId: input.transferAccountId }),
-          ...(input.categoryId !== undefined && { categoryId: input.categoryId }),
-          ...(input.type && { type: input.type }),
-          ...(input.amount && { amount: new Prisma.Decimal(input.amount) }),
+          accountId: targetAccountId,
+          transferAccountId: targetTransferAccountId,
+          categoryId: targetCategoryId,
+          type: targetType,
+          ...(input.amount !== undefined && { amount: new Prisma.Decimal(input.amount) }),
           ...(input.currency && { currency: input.currency }),
           ...(input.description !== undefined && { description: input.description }),
           ...(input.notes !== undefined && { notes: input.notes }),
-          ...(input.occurredAt && { occurredAt: input.occurredAt }),
+          ...(input.occurredAt && { occurredAt: new Date(input.occurredAt) }),
         },
       });
 
-      // 3. Recompute balances for all touched accounts
+      // 3. Recompute balances for all touched accounts (reverses old and applies new)
       for (const accId of affectedAccountIds) {
         await AccountService.recomputeBalance(tx, userId, accId);
       }
+
+      // 4. Audit log entry
+      await tx.auditLog.create({
+        data: {
+          userId,
+          action: 'transaction.update',
+          entityType: 'Transaction',
+          entityId: transactionId,
+          metadata: {
+            oldAmount: existing.amount.toString(),
+            newAmount: updated.amount.toString(),
+            oldType: existing.type,
+            newType: updated.type,
+          },
+        },
+      }).catch(() => {});
 
       return updated;
     });
   }
 
   /**
-   * Deletes a transaction, recomputes affected account balances,
+   * Deletes a transaction, atomically reverses all balance impacts,
    * and creates an audit log entry.
    */
   static async delete(userId: string, transactionId: string) {
@@ -151,12 +245,12 @@ export class TransactionService {
         throw new Error('Transaction not found.');
       }
 
-      const affectedAccountIds = [existing.accountId];
+      const affectedAccountIds = new Set<string>([existing.accountId]);
       if (existing.transferAccountId) {
-        affectedAccountIds.push(existing.transferAccountId);
+        affectedAccountIds.add(existing.transferAccountId);
       }
 
-      // Delete transaction
+      // Delete transaction row
       await tx.transaction.delete({
         where: { id: transactionId },
       });
@@ -172,11 +266,12 @@ export class TransactionService {
             amount: existing.amount.toString(),
             type: existing.type,
             accountId: existing.accountId,
+            transferAccountId: existing.transferAccountId,
           },
         },
       });
 
-      // Recompute affected balances
+      // Recompute affected balances (restores balance to state without this transaction)
       for (const accId of affectedAccountIds) {
         await AccountService.recomputeBalance(tx, userId, accId);
       }
@@ -201,7 +296,8 @@ export class TransactionService {
   }
 
   /**
-   * Retrieves filtered and paginated transactions list.
+   * Retrieves filtered, sorted, and paginated transactions along with
+   * database-aggregated income and expense summaries.
    */
   static async list(userId: string, filters: TransactionFilterInput = {}) {
     const page = filters.page || 1;
@@ -217,15 +313,29 @@ export class TransactionService {
       ...(filters.type && { type: filters.type }),
       ...(filters.startDate && { occurredAt: { gte: filters.startDate } }),
       ...(filters.endDate && { occurredAt: { lte: filters.endDate } }),
-      ...(filters.search && {
-        OR: [
-          { description: { contains: filters.search, mode: 'insensitive' } },
-          { notes: { contains: filters.search, mode: 'insensitive' } },
-        ],
-      }),
+      ...(filters.search &&
+        filters.search.trim() !== '' && {
+          OR: [
+            { description: { contains: filters.search.trim(), mode: 'insensitive' } },
+            { notes: { contains: filters.search.trim(), mode: 'insensitive' } },
+            { category: { name: { contains: filters.search.trim(), mode: 'insensitive' } } },
+          ],
+        }),
     };
 
-    const [transactions, total] = await Promise.all([
+    // Determine order by
+    let orderBy: Prisma.TransactionOrderByWithRelationInput = { occurredAt: 'desc' };
+    if (filters.sortBy === 'oldest') {
+      orderBy = { occurredAt: 'asc' };
+    } else if (filters.sortBy === 'highest_amount') {
+      orderBy = { amount: 'desc' };
+    } else if (filters.sortBy === 'lowest_amount') {
+      orderBy = { amount: 'asc' };
+    } else {
+      orderBy = { occurredAt: 'desc' };
+    }
+
+    const [transactions, total, incomeAgg, expenseAgg] = await Promise.all([
       prisma.transaction.findMany({
         where,
         include: {
@@ -233,19 +343,36 @@ export class TransactionService {
           transferAccount: { select: { id: true, name: true, color: true, icon: true } },
           category: { select: { id: true, name: true, color: true, icon: true, type: true } },
         },
-        orderBy: { occurredAt: 'desc' },
+        orderBy,
         skip,
         take: pageSize,
       }),
       prisma.transaction.count({ where }),
+      prisma.transaction.aggregate({
+        where: { ...where, type: TxnType.income },
+        _sum: { amount: true },
+      }),
+      prisma.transaction.aggregate({
+        where: { ...where, type: TxnType.expense },
+        _sum: { amount: true },
+      }),
     ]);
+
+    const totalIncome = incomeAgg._sum.amount || new Prisma.Decimal(0);
+    const totalExpense = expenseAgg._sum.amount || new Prisma.Decimal(0);
+    const netCashFlow = totalIncome.sub(totalExpense);
 
     return {
       transactions,
       total,
       page,
       pageSize,
-      totalPages: Math.ceil(total / pageSize),
+      totalPages: Math.ceil(total / pageSize) || 1,
+      summary: {
+        totalIncome,
+        totalExpense,
+        netCashFlow,
+      },
     };
   }
 }

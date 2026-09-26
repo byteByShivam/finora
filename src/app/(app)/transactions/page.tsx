@@ -13,6 +13,9 @@ interface PageProps {
     category?: string;
     type?: string;
     search?: string;
+    sortBy?: 'newest' | 'oldest' | 'highest_amount' | 'lowest_amount';
+    startDate?: string;
+    endDate?: string;
     page?: string;
   }>;
 }
@@ -27,6 +30,9 @@ export default async function TransactionsPage({ searchParams }: PageProps) {
     categoryId: params.category,
     type: params.type as TxnType | undefined,
     search: params.search,
+    sortBy: params.sortBy,
+    startDate: params.startDate ? new Date(params.startDate) : undefined,
+    endDate: params.endDate ? new Date(params.endDate) : undefined,
     page,
     pageSize: 20,
   };
@@ -47,11 +53,32 @@ export default async function TransactionsPage({ searchParams }: PageProps) {
     id: c.id,
     name: c.name,
     type: c.type,
+    color: c.color,
   }));
+
+  // Clean serialization of Decimal values across Server -> Client Component boundary
+  const serializedData = {
+    transactions: data.transactions.map((t) => ({
+      ...t,
+      amount: t.amount.toNumber(),
+      occurredAt: t.occurredAt.toISOString(),
+      createdAt: t.createdAt.toISOString(),
+      updatedAt: t.updatedAt.toISOString(),
+    })),
+    total: data.total,
+    page: data.page,
+    pageSize: data.pageSize,
+    totalPages: data.totalPages,
+    summary: {
+      totalIncome: data.summary.totalIncome.toNumber(),
+      totalExpense: data.summary.totalExpense.toNumber(),
+      netCashFlow: data.summary.netCashFlow.toNumber(),
+    },
+  };
 
   return (
     <TransactionsView
-      initialData={data}
+      initialData={serializedData}
       accounts={accounts}
       categories={categories}
       currency={user.currency}
