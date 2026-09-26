@@ -1,18 +1,27 @@
+import { notFound } from 'next/navigation';
 import { requireUser } from '@/server/auth/session';
 import { GoalService } from '@/server/services/goal.service';
 import { AccountService } from '@/server/services/account.service';
-import { GoalsView } from '@/components/goals/goals-view';
+import { GoalDetailView } from '@/components/goals/goal-detail-view';
+
+interface GoalDetailPageProps {
+  params: Promise<{ id: string }>;
+}
 
 export const dynamic = 'force-dynamic';
 
-export default async function GoalsPage() {
+export default async function GoalDetailPage({ params }: GoalDetailPageProps) {
   const user = await requireUser();
+  const { id } = await params;
 
-  const [goals, summary, accountsRaw] = await Promise.all([
-    GoalService.list(user.id),
-    GoalService.getSummaryStats(user.id),
+  const [detail, accountsRaw] = await Promise.all([
+    GoalService.getById(user.id, id),
     AccountService.list(user.id),
   ]);
+
+  if (!detail) {
+    notFound();
+  }
 
   const accounts = accountsRaw.map((a) => ({
     id: a.id,
@@ -20,9 +29,8 @@ export default async function GoalsPage() {
   }));
 
   return (
-    <GoalsView
-      goals={goals}
-      summary={summary}
+    <GoalDetailView
+      detail={detail}
       accounts={accounts}
       currency={user.currency}
     />

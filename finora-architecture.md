@@ -199,6 +199,7 @@ IDX: (`user_id`, `period_start`).
 | id | uuid | PK |
 | user_id | uuid | FK → users.id, `ON DELETE CASCADE`, not null |
 | name | varchar(120) | not null |
+| description | text | nullable |
 | target_amount | numeric(14,2) | not null, `CHECK (target_amount > 0)` |
 | current_amount | numeric(14,2) | not null, default 0 — cached, recomputed from contributions |
 | target_date | date | nullable |
@@ -211,14 +212,15 @@ IDX: (`user_id`, `period_start`).
 IDX: (`user_id`, `status`).
 
 ### 5.7 `goal_contributions`
-Join table linking a transaction to the goal it funds (a transaction may fund at most one goal in v1, simplifying the model to a nullable FK on the join instead of a true many-to-many; kept as its own table for auditability and future flexibility).
+Join table linking a transaction (or standalone savings entry) to the goal it funds (a transaction may fund at most one goal in v1, simplifying the model to a nullable FK on the join instead of a true many-to-many; kept as its own table for auditability and future flexibility).
 
 | Field | Type | Constraints |
 |---|---|---|
 | id | uuid | PK |
 | goal_id | uuid | FK → financial_goals.id, `ON DELETE CASCADE`, not null |
-| transaction_id | uuid | FK → transactions.id, `ON DELETE CASCADE`, not null, UQ |
+| transaction_id | uuid | FK → transactions.id, nullable, `ON DELETE SET NULL`, UQ |
 | amount | numeric(14,2) | not null, `CHECK (amount > 0)` |
+| note | text | nullable |
 | created_at | timestamptz | default now() |
 
 ### 5.8 `recurring_transactions`
@@ -426,6 +428,7 @@ model FinancialGoal {
   userId         String     @map("user_id")
   user           User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   name           String
+  description    String?    @db.Text
   targetAmount   Decimal    @map("target_amount") @db.Decimal(14, 2)
   currentAmount  Decimal    @default(0) @map("current_amount") @db.Decimal(14, 2)
   targetDate     DateTime?  @map("target_date") @db.Date
@@ -447,9 +450,10 @@ model GoalContribution {
   id            String        @id @default(uuid())
   goalId        String        @map("goal_id")
   goal          FinancialGoal @relation(fields: [goalId], references: [id], onDelete: Cascade)
-  transactionId String        @unique @map("transaction_id")
-  transaction   Transaction   @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  transactionId String?       @unique @map("transaction_id")
+  transaction   Transaction?  @relation(fields: [transactionId], references: [id], onDelete: SetNull)
   amount        Decimal       @db.Decimal(14, 2)
+  note          String?       @db.Text
   createdAt     DateTime      @default(now()) @map("created_at")
 
   @@map("goal_contributions")

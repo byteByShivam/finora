@@ -138,7 +138,7 @@ async function runVerification() {
   });
   if (sampleContrib) {
     console.log(`   ✅ Verified GoalContribution links:`);
-    console.log(`      Goal: "${sampleContrib.goal.name}" ← Amount: ${sampleContrib.amount} → Txn: "${sampleContrib.transaction.description || sampleContrib.transaction.id}"`);
+    console.log(`      Goal: "${sampleContrib.goal.name}" ← Amount: ${sampleContrib.amount} → Txn: "${sampleContrib.transaction?.description || sampleContrib.transaction?.id || 'Direct Entry'}"`);
   }
 
   // 6. Restrict & Cascade Constraints Verification

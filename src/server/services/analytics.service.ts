@@ -72,6 +72,7 @@ export interface DashboardRecentTransaction {
 }
 
 import { BudgetService } from '@/server/services/budget.service';
+import { GoalService } from '@/server/services/goal.service';
 
 export interface DashboardBudgetItem {
   id: string;
@@ -87,6 +88,19 @@ export interface DashboardBudgetItem {
   isOverBudget: boolean;
 }
 
+export interface DashboardGoalItem {
+  id: string;
+  name: string;
+  targetAmount: number;
+  currentAmount: number;
+  remainingAmount: number;
+  percentage: number;
+  targetDate: string | null;
+  status: string;
+  icon: string | null;
+  color: string | null;
+}
+
 export interface DashboardSnapshot {
   period: {
     key: DashboardPeriod;
@@ -100,6 +114,7 @@ export interface DashboardSnapshot {
   cashFlowTrend: DashboardTrendPoint[];
   recentTransactions: DashboardRecentTransaction[];
   budgets: DashboardBudgetItem[];
+  goals: DashboardGoalItem[];
   hasAccounts: boolean;
   hasTransactions: boolean;
   hasPeriodActivity: boolean;
@@ -373,6 +388,9 @@ export class AnalyticsService {
       isOverBudget: b.isOverBudget,
     }));
 
+    // 7. Active Financial Goals
+    const goals: DashboardGoalItem[] = await GoalService.getActiveGoalsForDashboard(userId, 4);
+
     return {
       period: {
         key: periodKey,
@@ -396,6 +414,7 @@ export class AnalyticsService {
       cashFlowTrend,
       recentTransactions,
       budgets,
+      goals,
       hasAccounts: userAccounts.length > 0,
       hasTransactions: totalAllTimeTxnCount > 0,
       hasPeriodActivity: periodTxnCount > 0,

@@ -196,6 +196,7 @@ model FinancialGoal {
   userId        String             @map("user_id")
   user          User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   name          String             @db.VarChar(120)
+  description   String?            @db.Text
   targetAmount  Decimal            @map("target_amount") @db.Decimal(14, 2)
   currentAmount Decimal            @default(0) @map("current_amount") @db.Decimal(14, 2)
   targetDate    DateTime?          @map("target_date") @db.Date
@@ -217,11 +218,13 @@ model GoalContribution {
   id            String        @id @default(uuid())
   goalId        String        @map("goal_id")
   goal          FinancialGoal @relation(fields: [goalId], references: [id], onDelete: Cascade)
-  transactionId String        @unique @map("transaction_id")
-  transaction   Transaction   @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  transactionId String?       @unique @map("transaction_id")
+  transaction   Transaction?  @relation(fields: [transactionId], references: [id], onDelete: SetNull)
   amount        Decimal       @db.Decimal(14, 2)
+  note          String?       @db.Text
   createdAt     DateTime      @default(now()) @map("created_at")
 
+  @@index([goalId, createdAt(sort: Desc)])
   @@map("goal_contributions")
 }
 

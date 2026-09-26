@@ -17,6 +17,7 @@ import {
   Calendar,
   Layers,
   ArrowLeftRight,
+  Target,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -56,7 +57,7 @@ export function DashboardView({
   const [customTo, setCustomTo] = useState(searchParams.get('to') || '');
   const [showCustomInputs, setShowCustomInputs] = useState(activePeriod === 'custom');
 
-  const { metrics, accounts: accountList, categoryBreakdown, cashFlowTrend, recentTransactions, budgets: activeBudgets = [], hasAccounts, hasTransactions, hasPeriodActivity } = snapshot;
+  const { metrics, accounts: accountList, categoryBreakdown, cashFlowTrend, recentTransactions, budgets: activeBudgets = [], goals: activeGoals = [], hasAccounts, hasTransactions, hasPeriodActivity } = snapshot;
 
   const handlePeriodChange = (period: string) => {
     if (period === 'custom') {
@@ -449,8 +450,8 @@ export function DashboardView({
         </Card>
       </div>
 
-      {/* Lower Row: Budget Overview (1 col) & Recent Transactions (2 cols) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Lower Row: Budget Overview & Financial Goals (2 cols) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Budget Overview Widget */}
         <Card className="border-slate-200 shadow-sm flex flex-col justify-between">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -534,8 +535,95 @@ export function DashboardView({
           </CardContent>
         </Card>
 
-        {/* Recent Transactions Widget */}
-        <Card className="lg:col-span-2 border-slate-200 shadow-sm overflow-hidden">
+        {/* Financial Goals Widget */}
+        <Card className="border-slate-200 shadow-sm flex flex-col justify-between">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <div>
+              <CardTitle className="text-base font-semibold text-slate-900 flex items-center gap-1.5">
+                <Target className="h-4 w-4 text-emerald-600" />
+                <span>Financial Goals</span>
+              </CardTitle>
+              <p className="text-xs text-slate-500 mt-0.5">Active savings milestones & targets</p>
+            </div>
+            <Link
+              href="/goals"
+              className="text-xs font-medium text-emerald-600 hover:text-emerald-700 inline-flex items-center gap-1"
+            >
+              <span>View all goals</span>
+              <ArrowRight className="h-3 w-3" />
+            </Link>
+          </CardHeader>
+          <CardContent className="space-y-3 pt-2 flex-1">
+            {activeGoals.length === 0 ? (
+              <div className="py-8 text-center text-xs text-slate-400">
+                <p>No active savings goals.</p>
+                <Link
+                  href="/goals"
+                  className="mt-2 inline-block font-semibold text-emerald-600 hover:text-emerald-700"
+                >
+                  + Set a goal
+                </Link>
+              </div>
+            ) : (
+              activeGoals.slice(0, 4).map((g) => (
+                <Link
+                  key={g.id}
+                  href={`/goals/${g.id}`}
+                  className="block group p-2.5 rounded-xl hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-200"
+                >
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span
+                        className="h-2.5 w-2.5 rounded-full shrink-0"
+                        style={{ backgroundColor: g.color || '#10b981' }}
+                      />
+                      <span className="font-semibold text-slate-900 group-hover:text-emerald-700 transition-colors truncate">
+                        {g.name}
+                      </span>
+                    </div>
+
+                    <div className="text-right shrink-0">
+                      <span className="font-mono font-bold text-slate-900">
+                        {formatCurrency(g.currentAmount, currency)}
+                      </span>
+                      <span className="text-slate-400 font-mono text-[11px] ml-1">
+                        / {formatCurrency(g.targetAmount, currency)}
+                      </span>
+                      <span
+                        className={`ml-2 font-mono font-bold text-[11px] ${
+                          g.percentage >= 100
+                            ? 'text-emerald-600'
+                            : g.status === 'at_risk' || g.status === 'overdue'
+                            ? 'text-rose-600'
+                            : 'text-sky-600'
+                        }`}
+                      >
+                        {g.percentage}%
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="w-full bg-slate-100 rounded-full h-1.5 mt-2 overflow-hidden">
+                    <div
+                      className={`h-1.5 rounded-full transition-all ${
+                        g.percentage >= 100
+                          ? 'bg-emerald-500'
+                          : g.status === 'at_risk' || g.status === 'overdue'
+                          ? 'bg-rose-500'
+                          : 'bg-sky-500'
+                      }`}
+                      style={{ width: `${Math.min(g.percentage, 100)}%` }}
+                    />
+                  </div>
+                </Link>
+              ))
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Recent Transactions Widget */}
+      <Card className="border-slate-200 shadow-sm overflow-hidden">
         <CardHeader className="flex flex-row items-center justify-between pb-3">
           <div>
             <CardTitle className="text-base font-semibold text-slate-900">Recent Transactions</CardTitle>
@@ -646,7 +734,6 @@ export function DashboardView({
           )}
         </CardContent>
       </Card>
-      </div>
 
       {/* Transaction Modal */}
       <TransactionModal
