@@ -85,6 +85,7 @@ export async function runCatchUpAction(): Promise<ActionResult<{ generatedCount:
     revalidatePath('/transactions');
     revalidatePath('/dashboard');
     revalidatePath('/accounts');
+    revalidatePath('/budgets');
     return { success: true, data: { generatedCount: count } };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Failed to process recurring transactions.';

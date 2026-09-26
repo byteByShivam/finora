@@ -15,6 +15,7 @@ export const createTransactionSchema = z
     description: z.string().trim().max(255, 'Description cannot exceed 255 characters').optional().nullable(),
     notes: z.string().trim().optional().nullable(),
     occurredAt: z.coerce.date().optional().default(() => new Date()),
+    recurringTransactionId: z.string().uuid().optional().nullable(),
   })
   .strict()
   .refine(
@@ -40,6 +41,7 @@ export interface CreateTransactionInput {
   description?: string | null;
   notes?: string | null;
   occurredAt?: Date | string;
+  recurringTransactionId?: string | null;
 }
 
 export const updateTransactionSchema = z

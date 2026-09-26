@@ -75,6 +75,7 @@ export class TransactionService {
           description: input.description || null,
           notes: input.notes || null,
           occurredAt: input.occurredAt ? new Date(input.occurredAt) : new Date(),
+          recurringTransactionId: input.recurringTransactionId || null,
         },
       });
 

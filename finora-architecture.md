@@ -229,10 +229,12 @@ Join table linking a transaction (or standalone savings entry) to the goal it fu
 | id | uuid | PK |
 | user_id | uuid | FK → users.id, `ON DELETE CASCADE`, not null |
 | account_id | uuid | FK → accounts.id, `ON DELETE CASCADE`, not null |
+| transfer_account_id | uuid | FK → accounts.id, `ON DELETE SET NULL`, nullable (populated when type = transfer) |
 | category_id | uuid | FK → categories.id, `ON DELETE RESTRICT`, nullable |
 | type | enum(`income`,`expense`,`transfer`) | not null |
 | amount | numeric(14,2) | not null |
 | description | varchar(255) | nullable |
+| notes | text | nullable |
 | frequency | enum(`daily`,`weekly`,`biweekly`,`monthly`,`yearly`) | not null |
 | interval | smallint | not null, default 1 (e.g. every 2 weeks) |
 | start_date | date | not null |
@@ -343,7 +345,8 @@ model Account {
 
   transactions       Transaction[] @relation("AccountTransactions")
   transferInbound     Transaction[] @relation("TransferAccount")
-  recurring           RecurringTransaction[]
+  recurring           RecurringTransaction[] @relation("RecurringSourceAccount")
+  recurringInbound    RecurringTransaction[] @relation("RecurringTransferAccount")
   linkedGoals          FinancialGoal[]
 
   @@unique([userId, name])
@@ -401,6 +404,7 @@ model Transaction {
   @@index([userId, occurredAt(sort: Desc)])
   @@index([userId, categoryId, occurredAt])
   @@index([accountId, occurredAt])
+  @@unique([recurringTransactionId, occurredAt])
   @@map("transactions")
 }
 
@@ -460,25 +464,28 @@ model GoalContribution {
 }
 
 model RecurringTransaction {
-  id          String         @id @default(uuid())
-  userId      String         @map("user_id")
-  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  accountId   String         @map("account_id")
-  account     Account        @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  categoryId  String?        @map("category_id")
-  category    Category?      @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  type        TxnType
-  amount      Decimal        @db.Decimal(14, 2)
-  description String?
-  frequency   RecurFrequency
-  interval    Int            @default(1)
-  startDate   DateTime       @map("start_date") @db.Date
-  endDate     DateTime?      @map("end_date") @db.Date
-  nextRunAt   DateTime       @map("next_run_at") @db.Date
-  lastRunAt   DateTime?      @map("last_run_at") @db.Date
-  isActive    Boolean        @default(true) @map("is_active")
-  createdAt   DateTime       @default(now()) @map("created_at")
-  updatedAt   DateTime       @updatedAt @map("updated_at")
+  id                 String                 @id @default(uuid())
+  userId             String                 @map("user_id")
+  user               User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accountId          String                 @map("account_id")
+  account            Account                @relation("RecurringSourceAccount", fields: [accountId], references: [id], onDelete: Cascade)
+  transferAccountId  String?                @map("transfer_account_id")
+  transferAccount    Account?               @relation("RecurringTransferAccount", fields: [transferAccountId], references: [id], onDelete: SetNull)
+  categoryId         String?                @map("category_id")
+  category           Category?              @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  type               TxnType
+  amount             Decimal                @db.Decimal(14, 2)
+  description        String?
+  notes              String?                @db.Text
+  frequency          RecurFrequency
+  interval           Int                    @default(1)
+  startDate          DateTime               @map("start_date") @db.Date
+  endDate            DateTime?              @map("end_date") @db.Date
+  nextRunAt          DateTime               @map("next_run_at") @db.Date
+  lastRunAt          DateTime?              @map("last_run_at") @db.Date
+  isActive           Boolean                @default(true) @map("is_active")
+  createdAt          DateTime               @default(now()) @map("created_at")
+  updatedAt          DateTime               @updatedAt @map("updated_at")
 
   generatedTransactions Transaction[]
 

@@ -9,11 +9,14 @@ export const dynamic = 'force-dynamic';
 export default async function RecurringPage() {
   const user = await requireUser();
 
-  const [recurringList, accountsRaw, categoriesRaw] = await Promise.all([
-    RecurringService.list(user.id),
-    AccountService.list(user.id),
-    CategoryService.list(user.id),
-  ]);
+  const [recurringList, upcomingItems, summaryStats, accountsRaw, categoriesRaw] =
+    await Promise.all([
+      RecurringService.list(user.id),
+      RecurringService.getUpcoming(user.id, 8),
+      RecurringService.getSummaryStats(user.id),
+      AccountService.list(user.id),
+      CategoryService.list(user.id),
+    ]);
 
   const accounts = accountsRaw.map((a) => ({
     id: a.id,
@@ -29,6 +32,8 @@ export default async function RecurringPage() {
   return (
     <RecurringView
       recurringList={recurringList}
+      upcomingItems={upcomingItems}
+      summaryStats={summaryStats}
       accounts={accounts}
       categories={categories}
       currency={user.currency}

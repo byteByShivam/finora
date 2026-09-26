@@ -73,6 +73,9 @@ export interface DashboardRecentTransaction {
 
 import { BudgetService } from '@/server/services/budget.service';
 import { GoalService } from '@/server/services/goal.service';
+import { RecurringService, UpcomingRecurringItem } from '@/server/services/recurring.service';
+
+export type DashboardRecurringItem = UpcomingRecurringItem;
 
 export interface DashboardBudgetItem {
   id: string;
@@ -115,6 +118,7 @@ export interface DashboardSnapshot {
   recentTransactions: DashboardRecentTransaction[];
   budgets: DashboardBudgetItem[];
   goals: DashboardGoalItem[];
+  upcomingRecurring?: DashboardRecurringItem[];
   hasAccounts: boolean;
   hasTransactions: boolean;
   hasPeriodActivity: boolean;
@@ -391,6 +395,9 @@ export class AnalyticsService {
     // 7. Active Financial Goals
     const goals: DashboardGoalItem[] = await GoalService.getActiveGoalsForDashboard(userId, 4);
 
+    // 8. Upcoming Recurring Transactions
+    const upcomingRecurring: DashboardRecurringItem[] = await RecurringService.getUpcoming(userId, 5);
+
     return {
       period: {
         key: periodKey,
@@ -415,6 +422,7 @@ export class AnalyticsService {
       recentTransactions,
       budgets,
       goals,
+      upcomingRecurring,
       hasAccounts: userAccounts.length > 0,
       hasTransactions: totalAllTimeTxnCount > 0,
       hasPeriodActivity: periodTxnCount > 0,

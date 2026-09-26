@@ -18,6 +18,7 @@ import {
   Layers,
   ArrowLeftRight,
   Target,
+  Repeat,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -57,7 +58,19 @@ export function DashboardView({
   const [customTo, setCustomTo] = useState(searchParams.get('to') || '');
   const [showCustomInputs, setShowCustomInputs] = useState(activePeriod === 'custom');
 
-  const { metrics, accounts: accountList, categoryBreakdown, cashFlowTrend, recentTransactions, budgets: activeBudgets = [], goals: activeGoals = [], hasAccounts, hasTransactions, hasPeriodActivity } = snapshot;
+  const {
+    metrics,
+    accounts: accountList,
+    categoryBreakdown,
+    cashFlowTrend,
+    recentTransactions,
+    budgets: activeBudgets = [],
+    goals: activeGoals = [],
+    upcomingRecurring: upcomingItems = [],
+    hasAccounts,
+    hasTransactions,
+    hasPeriodActivity,
+  } = snapshot;
 
   const handlePeriodChange = (period: string) => {
     if (period === 'custom') {
@@ -450,8 +463,8 @@ export function DashboardView({
         </Card>
       </div>
 
-      {/* Lower Row: Budget Overview & Financial Goals (2 cols) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      {/* Lower Row: Budget Overview, Financial Goals & Upcoming Recurring (3 cols) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {/* Budget Overview Widget */}
         <Card className="border-slate-200 shadow-sm flex flex-col justify-between">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -616,6 +629,72 @@ export function DashboardView({
                     />
                   </div>
                 </Link>
+              ))
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Upcoming Recurring Transactions Widget */}
+        <Card className="border-slate-200 shadow-sm flex flex-col justify-between">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <div>
+              <CardTitle className="text-base font-semibold text-slate-900 flex items-center gap-1.5">
+                <Repeat className="h-4 w-4 text-sky-600" />
+                <span>Upcoming Scheduled</span>
+              </CardTitle>
+              <p className="text-xs text-slate-500 mt-0.5">Recurring bills & scheduled flows</p>
+            </div>
+            <Link
+              href="/recurring"
+              className="text-xs font-medium text-emerald-600 hover:text-emerald-700 inline-flex items-center gap-1"
+            >
+              <span>View all</span>
+              <ArrowRight className="h-3 w-3" />
+            </Link>
+          </CardHeader>
+          <CardContent className="space-y-3 pt-2 flex-1">
+            {upcomingItems.length === 0 ? (
+              <div className="py-8 text-center text-xs text-slate-400">
+                <p>No upcoming scheduled items.</p>
+                <Link
+                  href="/recurring"
+                  className="mt-2 inline-block font-semibold text-emerald-600 hover:text-emerald-700"
+                >
+                  + Add recurring
+                </Link>
+              </div>
+            ) : (
+              upcomingItems.slice(0, 4).map((r) => (
+                <div
+                  key={r.id}
+                  className="flex items-center justify-between p-2.5 rounded-xl border border-slate-100 hover:border-slate-200 hover:bg-slate-50/50 transition-all text-xs"
+                >
+                  <div className="min-w-0 pr-2">
+                    <div className="font-semibold text-slate-900 truncate">
+                      {r.description || (r.type === 'transfer' ? 'Scheduled Transfer' : 'Scheduled Item')}
+                    </div>
+                    <div className="text-[11px] text-slate-500 flex items-center gap-1.5 mt-0.5">
+                      <span>{r.nextRunAtFormatted}</span>
+                      <span>•</span>
+                      <span className="truncate">{r.accountName}</span>
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <span
+                      className={`font-mono font-bold ${
+                        r.type === 'income'
+                          ? 'text-emerald-700'
+                          : r.type === 'expense'
+                          ? 'text-rose-700'
+                          : 'text-sky-700'
+                      }`}
+                    >
+                      {r.type === 'income' ? '+' : r.type === 'expense' ? '-' : '↔ '}
+                      {formatCurrency(r.amount, currency)}
+                    </span>
+                    <div className="text-[10px] text-slate-400 capitalize">{r.frequency}</div>
+                  </div>
+                </div>
               ))
             )}
           </CardContent>
