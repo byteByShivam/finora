@@ -5,7 +5,7 @@ import {
   formatDate,
 } from '@/lib/dates';
 import { calculatePercentage } from '@/lib/money';
-import { Prisma, TxnType, AccountType } from '@prisma/client';
+import { Prisma, TxnType, AccountType, BudgetPeriod } from '@prisma/client';
 import {
   startOfMonth,
   endOfMonth,
@@ -71,6 +71,22 @@ export interface DashboardRecentTransaction {
   categoryIcon: string | null;
 }
 
+import { BudgetService } from '@/server/services/budget.service';
+
+export interface DashboardBudgetItem {
+  id: string;
+  categoryId: string;
+  categoryName: string;
+  categoryColor: string | null;
+  categoryIcon: string | null;
+  amount: number;
+  spent: number;
+  remaining: number;
+  percentage: number;
+  status: string;
+  isOverBudget: boolean;
+}
+
 export interface DashboardSnapshot {
   period: {
     key: DashboardPeriod;
@@ -83,6 +99,7 @@ export interface DashboardSnapshot {
   categoryBreakdown: DashboardCategoryBreakdown[];
   cashFlowTrend: DashboardTrendPoint[];
   recentTransactions: DashboardRecentTransaction[];
+  budgets: DashboardBudgetItem[];
   hasAccounts: boolean;
   hasTransactions: boolean;
   hasPeriodActivity: boolean;
@@ -340,6 +357,22 @@ export class AnalyticsService {
       categoryIcon: t.category ? t.category.icon : null,
     }));
 
+    // 6. Active Budgets Overview
+    const budgetsRaw = await BudgetService.getForPeriod(userId, from, BudgetPeriod.monthly);
+    const budgets: DashboardBudgetItem[] = budgetsRaw.slice(0, 4).map((b) => ({
+      id: b.id,
+      categoryId: b.categoryId,
+      categoryName: b.categoryName,
+      categoryColor: b.categoryColor,
+      categoryIcon: b.categoryIcon,
+      amount: b.amount,
+      spent: b.spent,
+      remaining: b.remaining,
+      percentage: b.percentage,
+      status: b.status,
+      isOverBudget: b.isOverBudget,
+    }));
+
     return {
       period: {
         key: periodKey,
@@ -362,6 +395,7 @@ export class AnalyticsService {
       categoryBreakdown,
       cashFlowTrend,
       recentTransactions,
+      budgets,
       hasAccounts: userAccounts.length > 0,
       hasTransactions: totalAllTimeTxnCount > 0,
       hasPeriodActivity: periodTxnCount > 0,

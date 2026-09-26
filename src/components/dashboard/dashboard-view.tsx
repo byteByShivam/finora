@@ -56,7 +56,7 @@ export function DashboardView({
   const [customTo, setCustomTo] = useState(searchParams.get('to') || '');
   const [showCustomInputs, setShowCustomInputs] = useState(activePeriod === 'custom');
 
-  const { metrics, accounts: accountList, categoryBreakdown, cashFlowTrend, recentTransactions, hasAccounts, hasTransactions, hasPeriodActivity } = snapshot;
+  const { metrics, accounts: accountList, categoryBreakdown, cashFlowTrend, recentTransactions, budgets: activeBudgets = [], hasAccounts, hasTransactions, hasPeriodActivity } = snapshot;
 
   const handlePeriodChange = (period: string) => {
     if (period === 'custom') {
@@ -449,8 +449,93 @@ export function DashboardView({
         </Card>
       </div>
 
-      {/* Recent Transactions Widget */}
-      <Card className="border-slate-200 shadow-sm overflow-hidden">
+      {/* Lower Row: Budget Overview (1 col) & Recent Transactions (2 cols) */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Budget Overview Widget */}
+        <Card className="border-slate-200 shadow-sm flex flex-col justify-between">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <div>
+              <CardTitle className="text-base font-semibold text-slate-900">Budget Overview</CardTitle>
+              <p className="text-xs text-slate-500 mt-0.5">Active category spending limits</p>
+            </div>
+            <Link
+              href="/budgets"
+              className="text-xs font-medium text-emerald-600 hover:text-emerald-700 inline-flex items-center gap-1"
+            >
+              <span>Manage</span>
+              <ArrowRight className="h-3 w-3" />
+            </Link>
+          </CardHeader>
+          <CardContent className="space-y-3 pt-2 flex-1">
+            {activeBudgets.length === 0 ? (
+              <div className="py-8 text-center text-xs text-slate-400">
+                <p>No active category budgets.</p>
+                <Link
+                  href="/budgets"
+                  className="mt-2 inline-block font-semibold text-emerald-600 hover:text-emerald-700"
+                >
+                  + Set a budget
+                </Link>
+              </div>
+            ) : (
+              activeBudgets.slice(0, 4).map((b) => (
+                <Link
+                  key={b.id}
+                  href={`/budgets/${b.id}`}
+                  className="block group p-2.5 rounded-xl hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-200"
+                >
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span
+                        className="h-2.5 w-2.5 rounded-full shrink-0"
+                        style={{ backgroundColor: b.categoryColor || '#10b981' }}
+                      />
+                      <span className="font-semibold text-slate-900 group-hover:text-emerald-700 transition-colors truncate">
+                        {b.categoryName}
+                      </span>
+                    </div>
+
+                    <div className="text-right shrink-0">
+                      <span className="font-mono font-bold text-slate-900">
+                        {formatCurrency(b.spent, currency)}
+                      </span>
+                      <span className="text-slate-400 font-mono text-[11px] ml-1">
+                        / {formatCurrency(b.amount, currency)}
+                      </span>
+                      <span
+                        className={`ml-2 font-mono font-bold text-[11px] ${
+                          b.isOverBudget
+                            ? 'text-rose-600'
+                            : b.percentage >= 80
+                            ? 'text-amber-600'
+                            : 'text-emerald-600'
+                        }`}
+                      >
+                        {b.percentage}%
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="w-full bg-slate-100 rounded-full h-1.5 mt-2 overflow-hidden">
+                    <div
+                      className={`h-1.5 rounded-full transition-all ${
+                        b.isOverBudget
+                          ? 'bg-rose-500'
+                          : b.percentage >= 80
+                          ? 'bg-amber-500'
+                          : 'bg-emerald-500'
+                      }`}
+                      style={{ width: `${Math.min(b.percentage, 100)}%` }}
+                    />
+                  </div>
+                </Link>
+              ))
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Recent Transactions Widget */}
+        <Card className="lg:col-span-2 border-slate-200 shadow-sm overflow-hidden">
         <CardHeader className="flex flex-row items-center justify-between pb-3">
           <div>
             <CardTitle className="text-base font-semibold text-slate-900">Recent Transactions</CardTitle>
@@ -561,6 +646,7 @@ export function DashboardView({
           )}
         </CardContent>
       </Card>
+      </div>
 
       {/* Transaction Modal */}
       <TransactionModal
