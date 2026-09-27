@@ -52,7 +52,7 @@ export function BudgetTrendChart({ data, budgetLimit, currency }: BudgetTrendCha
             tickFormatter={(val) => `${val >= 1000 ? `${(val / 1000).toFixed(0)}k` : val}`}
           />
           <Tooltip
-            formatter={(value: any, name: any) => [
+            formatter={(value: unknown, name: unknown) => [
               formatCurrency(Number(value || 0), currency),
               name === 'cumulative' ? 'Cumulative Spend' : 'Daily Spend',
             ]}

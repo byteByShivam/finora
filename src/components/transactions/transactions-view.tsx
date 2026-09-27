@@ -15,7 +15,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Receipt,
-  Calendar,
   AlertCircle,
   Landmark,
 } from 'lucide-react';
@@ -27,7 +26,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { TransactionModal, EditableTransaction } from '@/components/transactions/transaction-modal';
 import { deleteTransactionAction } from '@/app/actions/transaction.actions';
 import { formatDateTime } from '@/lib/dates';
-import { formatCurrency } from '@/lib/money';
+import { formatCurrency, DecimalValue } from '@/lib/money';
 import { TxnType } from '@prisma/client';
 
 export interface TransactionRow {
@@ -37,7 +36,7 @@ export interface TransactionRow {
   transferAccountId: string | null;
   categoryId: string | null;
   type: TxnType;
-  amount: any;
+  amount: DecimalValue;
   currency: string;
   description: string | null;
   notes: string | null;
@@ -72,9 +71,9 @@ interface TransactionsViewProps {
     pageSize: number;
     totalPages: number;
     summary?: {
-      totalIncome: any;
-      totalExpense: any;
-      netCashFlow: any;
+      totalIncome: DecimalValue;
+      totalExpense: DecimalValue;
+      netCashFlow: DecimalValue;
     };
   };
   accounts: { id: string; name: string; currency: string }[];

@@ -20,7 +20,6 @@ import {
   ArrowDownLeft,
   ArrowRight,
   Search,
-  Calendar,
   Layers,
   Percent,
 } from 'lucide-react';
@@ -28,7 +27,6 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { EmptyState } from '@/components/ui/empty-state';
 import { AccountModal } from '@/components/accounts/account-modal';
 import { toggleArchiveAccountAction, deleteAccountAction } from '@/app/actions/account.actions';
 import { AccountType, TxnType } from '@prisma/client';

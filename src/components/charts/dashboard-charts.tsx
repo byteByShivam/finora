@@ -2,8 +2,6 @@
 
 import {
   ResponsiveContainer,
-  AreaChart,
-  Area,
   XAxis,
   YAxis,
   Tooltip,
@@ -65,9 +63,9 @@ export function IncomeVsExpenseChart({ data, currency = 'INR' }: IncomeVsExpense
             tickFormatter={(val) => `${val >= 1000 ? `${(val / 1000).toFixed(0)}k` : val}`}
           />
           <Tooltip
-            formatter={(value: any, name: any) => [
+            formatter={(value: unknown, name: unknown) => [
               formatCurrency(Number(value || 0), currency),
-              name,
+              String(name),
             ]}
             contentStyle={{
               borderRadius: '12px',
@@ -122,7 +120,7 @@ export function CashFlowTrendChart({ data, currency = 'INR' }: CashFlowTrendChar
           />
           <ReferenceLine y={0} stroke="#cbd5e1" strokeWidth={1} />
           <Tooltip
-            formatter={(value: any) => [
+            formatter={(value: unknown) => [
               formatCurrency(Number(value || 0), currency),
               'Net Cash Flow',
             ]}
@@ -137,15 +135,21 @@ export function CashFlowTrendChart({ data, currency = 'INR' }: CashFlowTrendChar
             dataKey="netCashFlow"
             name="Net Cash Flow"
             maxBarSize={32}
-            shape={(props: any) => {
-              const { fill, x, y, width, height, value } = props;
-              const barFill = value >= 0 ? '#10b981' : '#f43f5e';
+            shape={(props: unknown) => {
+              const { x, y, width, height, value } = props as {
+                x?: number;
+                y?: number;
+                width?: number;
+                height?: number;
+                value?: number;
+              };
+              const barFill = Number(value || 0) >= 0 ? '#10b981' : '#f43f5e';
               return (
                 <rect
                   x={x}
                   y={y}
                   width={width}
-                  height={Math.abs(height)}
+                  height={Math.abs(height || 0)}
                   fill={barFill}
                   rx={3}
                   ry={3}
@@ -192,7 +196,7 @@ export function CategoryBreakdownChart({ data, currency = 'INR' }: CategoryBreak
               ))}
             </Pie>
             <Tooltip
-              formatter={(value: any) => [formatCurrency(Number(value || 0), currency), 'Spent']}
+              formatter={(value: unknown) => [formatCurrency(Number(value || 0), currency), 'Spent']}
               contentStyle={{
                 borderRadius: '12px',
                 border: '1px solid #e2e8f0',

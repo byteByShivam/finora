@@ -15,7 +15,6 @@ import {
   TrendingUp,
   AlertCircle,
   Search,
-  ExternalLink,
   Coins,
   Layers,
   ArrowRight,
@@ -28,16 +27,16 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { AccountModal, EditableAccount } from '@/components/accounts/account-modal';
 import { toggleArchiveAccountAction, deleteAccountAction } from '@/app/actions/account.actions';
 import { AccountType } from '@prisma/client';
-import { formatCurrency } from '@/lib/money';
+import { formatCurrency, DecimalValue } from '@/lib/money';
 
 export interface AccountItem {
   id: string;
   name: string;
   type: AccountType;
   currency: string;
-  openingBalance: any;
-  currentBalance: any;
-  creditLimit: any;
+  openingBalance: DecimalValue;
+  currentBalance: DecimalValue;
+  creditLimit: DecimalValue | null;
   color: string | null;
   icon: string | null;
   isArchived: boolean;

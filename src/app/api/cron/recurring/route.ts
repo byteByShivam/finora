@@ -39,10 +39,11 @@ export async function POST(req: NextRequest) {
       ...result,
       timestamp: new Date().toISOString(),
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Internal Server Error';
     console.error('[Cron /api/cron/recurring] Execution failed:', error);
     return NextResponse.json(
-      { success: false, error: error.message || 'Internal Server Error' },
+      { success: false, error: message },
       { status: 500 }
     );
   }

@@ -4,7 +4,7 @@ import prisma from '@/server/db/prisma';
 import { formatDateTime } from '@/lib/dates';
 
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ format: string }> }
 ) {
   const user = await getCurrentUser();

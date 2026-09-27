@@ -3,40 +3,15 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Sidebar } from './sidebar';
+import { Sidebar, NAV_ITEMS } from './sidebar';
 import { Topbar } from './topbar';
 import {
-  LayoutDashboard,
-  ArrowLeftRight,
-  Landmark,
-  PieChart,
-  Target,
-  BarChart3,
-  Repeat,
-  FileText,
-  Tags,
-  Bell,
-  Settings,
   X,
   Wallet,
   LogOut,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { logoutAction } from '@/app/actions/auth.actions';
-
-const NAV_ITEMS = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/transactions', label: 'Transactions', icon: ArrowLeftRight },
-  { href: '/accounts', label: 'Accounts', icon: Landmark },
-  { href: '/budgets', label: 'Budgets', icon: PieChart },
-  { href: '/goals', label: 'Financial Goals', icon: Target },
-  { href: '/analytics', label: 'Analytics', icon: BarChart3 },
-  { href: '/recurring', label: 'Recurring', icon: Repeat },
-  { href: '/reports', label: 'Reports', icon: FileText },
-  { href: '/categories', label: 'Categories', icon: Tags },
-  { href: '/notifications', label: 'Notifications', icon: Bell },
-  { href: '/settings', label: 'Settings', icon: Settings },
-];
 
 interface AppShellProps {
   user: {

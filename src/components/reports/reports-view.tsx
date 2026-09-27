@@ -1,10 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { FileText, Download, Printer, TrendingUp, TrendingDown, ShieldCheck } from 'lucide-react';
+import { FileText, Download, Printer, ShieldCheck } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 
 interface ReportsViewProps {
   user: { name: string; email: string; currency: string };

@@ -2,7 +2,7 @@
 
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { MonthlyBarChart, CategoryBreakdownChart } from '@/components/charts/dashboard-charts';
-import { Wallet, TrendingUp, TrendingDown, PiggyBank, BarChart3 } from 'lucide-react';
+import { TrendingUp, TrendingDown, PiggyBank } from 'lucide-react';
 
 interface AnalyticsViewProps {
   data: {
@@ -19,7 +19,6 @@ interface AnalyticsViewProps {
 
 export function AnalyticsView({ data, currency }: AnalyticsViewProps) {
   const { totalIncome, totalExpense, netSavings, monthlySeries, categories, accountDistribution } = data;
-  const formattedCategories = categories;
 
   return (
     <div className="space-y-8">
@@ -106,7 +105,7 @@ export function AnalyticsView({ data, currency }: AnalyticsViewProps) {
             <p className="text-xs text-slate-500 mt-1">Where funds flowed across categories</p>
           </CardHeader>
           <CardContent>
-            <CategoryBreakdownChart data={formattedCategories} currency={currency} />
+            <CategoryBreakdownChart data={categories} currency={currency} />
           </CardContent>
         </Card>
 

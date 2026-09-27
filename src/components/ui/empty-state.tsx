@@ -1,4 +1,5 @@
 import React from 'react';
+import Link from 'next/link';
 import { LucideIcon } from 'lucide-react';
 import { Button } from './button';
 
@@ -29,12 +30,12 @@ export function EmptyState({
       {actionLabel && (onAction || actionHref) && (
         <div className="mt-6">
           {actionHref ? (
-            <a
+            <Link
               href={actionHref}
               className="inline-flex items-center justify-center rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 transition-colors"
             >
               {actionLabel}
-            </a>
+            </Link>
           ) : (
             <Button onClick={onAction} variant="default" size="sm">
               {actionLabel}

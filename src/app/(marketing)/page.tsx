@@ -6,9 +6,6 @@ import {
   ArrowRight,
   Wallet,
   Sparkles,
-  Lock,
-  Layers,
-  CheckCircle2,
 } from 'lucide-react';
 
 export default function MarketingPage() {

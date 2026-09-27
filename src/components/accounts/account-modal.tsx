@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { createAccountAction, updateAccountAction } from '@/app/actions/account.actions';
 import { AccountType } from '@prisma/client';
-import { Building, Wallet, CreditCard, TrendingUp, Landmark, ShieldAlert } from 'lucide-react';
+import { ShieldAlert } from 'lucide-react';
 
 export interface EditableAccount {
   id: string;

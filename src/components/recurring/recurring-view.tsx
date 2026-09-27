@@ -8,8 +8,6 @@ import {
   Pause,
   Trash2,
   Edit2,
-  Calendar,
-  Building,
   RefreshCw,
   AlertCircle,
   CheckCircle2,
@@ -37,7 +35,7 @@ import {
   RecurringSummaryStats,
 } from '@/server/services/recurring.service';
 import { formatCurrency } from '@/lib/money';
-import { TxnType, RecurFrequency } from '@prisma/client';
+import { TxnType } from '@prisma/client';
 
 interface RecurringViewProps {
   recurringList: RecurringScheduleItem[];

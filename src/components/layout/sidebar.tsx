@@ -20,7 +20,7 @@ import {
 import { cn } from '@/lib/utils';
 import { logoutAction } from '@/app/actions/auth.actions';
 
-const NAV_ITEMS = [
+export const NAV_ITEMS = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/transactions', label: 'Transactions', icon: ArrowLeftRight },
   { href: '/accounts', label: 'Accounts', icon: Landmark },

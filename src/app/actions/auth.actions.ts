@@ -6,10 +6,7 @@ import { setSessionCookie, clearSessionCookie } from '@/server/auth/session';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
-
-export type ActionResult<T = unknown> =
-  | { success: true; data: T; error?: never }
-  | { success: false; error: string; data?: never };
+import { ActionResult } from '@/types/actions';
 
 export async function registerAction(rawInput: RegisterInput): Promise<ActionResult<{ user: SessionUser }>> {
   try {

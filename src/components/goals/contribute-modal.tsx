@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { addContributionAction } from '@/app/actions/goal.actions';
 import { formatCurrency } from '@/lib/money';
-import { Coins, ArrowRight } from 'lucide-react';
+import { Coins } from 'lucide-react';
 
 interface ContributeModalProps {
   isOpen: boolean;

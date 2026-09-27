@@ -2,13 +2,10 @@ import prisma from '@/server/db/prisma';
 import {
   getDashboardPeriodRange,
   DashboardPeriod,
-  formatDate,
 } from '@/lib/dates';
 import { calculatePercentage } from '@/lib/money';
 import { Prisma, TxnType, AccountType, BudgetPeriod } from '@prisma/client';
 import {
-  startOfMonth,
-  endOfMonth,
   eachDayOfInterval,
   eachMonthOfInterval,
   format,

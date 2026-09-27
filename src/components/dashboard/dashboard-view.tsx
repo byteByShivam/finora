@@ -15,7 +15,6 @@ import {
   Coins,
   Receipt,
   Calendar,
-  Layers,
   ArrowLeftRight,
   Target,
   Repeat,
@@ -24,7 +23,6 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { EmptyState } from '@/components/ui/empty-state';
 import {
   IncomeVsExpenseChart,
   CategoryBreakdownChart,
@@ -34,7 +32,7 @@ import { TransactionModal } from '@/components/transactions/transaction-modal';
 import { DashboardSnapshot } from '@/server/services/analytics.service';
 import { formatCurrency } from '@/lib/money';
 import { formatDateTime } from '@/lib/dates';
-import { AccountType, TxnType } from '@prisma/client';
+import { AccountType } from '@prisma/client';
 
 interface DashboardViewProps {
   snapshot: DashboardSnapshot;
@@ -68,8 +66,6 @@ export function DashboardView({
     goals: activeGoals = [],
     upcomingRecurring: upcomingItems = [],
     hasAccounts,
-    hasTransactions,
-    hasPeriodActivity,
   } = snapshot;
 
   const handlePeriodChange = (period: string) => {

@@ -62,12 +62,35 @@ export interface RecurringSummaryStats {
   projectedMonthlyTransfers: number;
 }
 
+export interface RecurringRecordWithRelations {
+  id: string;
+  userId: string;
+  accountId: string;
+  transferAccountId: string | null;
+  categoryId: string | null;
+  type: TxnType;
+  amount: Prisma.Decimal | number | string;
+  description: string | null;
+  notes: string | null;
+  frequency: RecurFrequency;
+  interval: number;
+  startDate: Date;
+  endDate: Date | null;
+  nextRunAt: Date;
+  lastRunAt: Date | null;
+  isActive: boolean;
+  account: { id: string; name: string; color: string | null; type: string };
+  transferAccount: { id: string; name: string; color: string | null; type: string } | null;
+  category: { id: string; name: string; color: string | null; icon: string | null } | null;
+  _count?: { generatedTransactions?: number };
+}
+
 export class RecurringService {
   /**
    * Helper to format raw database record into typed RecurringScheduleItem DTO.
    */
   private static formatItem(
-    r: any,
+    r: RecurringRecordWithRelations,
     now: Date = new Date()
   ): RecurringScheduleItem {
     const isCompleted = r.endDate ? new Date(r.endDate) < now : false;
@@ -668,9 +691,11 @@ export class RecurringService {
 
             generatedCount++;
             occurrencesGenerated++;
-          } catch (createErr: any) {
+          } catch (createErr: unknown) {
             // If duplicate unique constraint P2002 triggered by concurrent execution, ignore and proceed
-            if (createErr?.code !== 'P2002') {
+            const isUniqueConstraint =
+              createErr instanceof Prisma.PrismaClientKnownRequestError && createErr.code === 'P2002';
+            if (!isUniqueConstraint) {
               console.error(`[RecurringService] Failed to generate transaction for schedule ${r.id}:`, createErr);
             }
           }
